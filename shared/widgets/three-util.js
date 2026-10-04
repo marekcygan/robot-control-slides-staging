@@ -7,12 +7,15 @@ export { THREE };
 
 // A scene with a camera, orbit controls and a render-on-demand loop.
 export function makeStage(canvas, { fov = 40, position = [4, 3, 5], target = [0, 0, 0], bg = 0x1e2128 } = {}) {
+  // Logical (CSS) size comes from the canvas' width/height attributes. Read it BEFORE setPixelRatio, which
+  // enlarges the drawing buffer (canvas.width) — re-reading it afterwards double-scaled on 2× (Retina) displays.
+  const w = canvas.width, h = canvas.height;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-  renderer.setSize(canvas.width, canvas.height, false);
+  renderer.setSize(w, h, true);   // true: also set CSS width/height, so layout size stays w × h
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(bg);
-  const camera = new THREE.PerspectiveCamera(fov, canvas.width / canvas.height, 0.05, 200);
+  const camera = new THREE.PerspectiveCamera(fov, w / h, 0.05, 200);
   camera.position.set(...position);
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(3, 6, 4); scene.add(dl);

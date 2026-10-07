@@ -24,11 +24,26 @@
 
 <section>
   <h2>Course logistics</h2>
-  <ul>
-    <li>Lab materials: <a href="https://mim-ml-teaching.github.io/public-rc-2026-27/">mim-ml-teaching.github.io/public-rc-2026-27</a></li>
-    <li>Homework submissions: Moodle</li>
-    <li>Communication: Slack</li>
-  </ul>
+  <div class="cols" style="grid-template-columns:1.1fr 1fr; font-size:0.7em; gap:1em">
+    <div class="box">
+      <h3>Communication: Slack</h3>
+      <div style="display:flex; gap:1em; align-items:center">
+        <img src="../../assets/slack-qr.svg" alt="QR code: invitation to the course Slack workspace" style="width:250px; height:250px; padding:10px; background:#fff; border-radius:6px; margin:0; flex:none">
+        <div style="line-height:1.4">Announcements and questions are on Slack: scan the code to join the workspace.
+          <div class="small" style="margin-top:0.4em"><a href="https://join.slack.com/t/machinelearni-cyi1366/shared_invite/zt-4bfetiimd-_c5V85nhi5TKr7sQVEOxOg">invitation link</a></div></div>
+      </div>
+    </div>
+    <div>
+      <div class="box">
+        <h3>Lab materials</h3>
+        <a href="https://mim-ml-teaching.github.io/public-rc-2026-27/">mim-ml-teaching.github.io/public-rc-2026-27</a>
+      </div>
+      <div class="box" style="margin-top:0.6em">
+        <h3>Homework submissions</h3>
+        Moodle
+      </div>
+    </div>
+  </div>
 </section>
 
 <section>
@@ -65,11 +80,11 @@
   <h2>Today we mathematically model</h2>
   <div class="cols">
     <div>
-      <h3>1 · Moving things around</h3>
+      <h3>Moving things around</h3>
       <div data-widget="teaser" data-config='{"mode":"grasp","width":540,"height":360}'></div>
     </div>
     <div>
-      <h3>2 · Taking a picture</h3>
+      <h3>Taking a picture</h3>
       <div data-widget="teaser" data-config='{"mode":"pixel","width":540,"height":360}'></div>
     </div>
   </div>
@@ -79,7 +94,7 @@
   <h2>Today we mathematically model: the plan</h2>
   <div class="cols">
     <div>
-      <h3>1 · Moving things around</h3>
+      <h3>Moving things around</h3>
       <ul>
         <li>2D image transformations as matrices</li>
         <li>homogeneous coordinates</li>
@@ -88,7 +103,7 @@
       </ul>
     </div>
     <div>
-      <h3>2 · Taking a picture</h3>
+      <h3>Taking a picture</h3>
       <ul>
         <li>pinhole camera: 3D point → pixel</li>
         <li>pixel → ray in 3D</li>
@@ -113,7 +128,7 @@
   <p>$f : \mathbb{R}^2 \to \mathbb{R}^3,\ (x, y) \mapsto (r, g, b)$. &nbsp;Pixel coordinates: origin top-left, $x$ right, $y$ <b>down</b>.</p>
   <p style="margin-top:0.5em"><b>Photometric</b>: change the values, $\;g(x) = h\big(f(x)\big)$, &nbsp;<span class="small">$h:\mathbb{R}^3\to\mathbb{R}^3$ acts on colours, e.g. brightness $h(c) = 1.4\,c$</span></p>
   <div data-widget="imgops" data-config='{"group":"photometric","ops":["original","brightness +40%","contrast −50%","greyscale","hue shift","blur","noise"],"tile":[150,112]}'></div>
-  <p style="margin-top:0.4em"><b>Geometric</b>: change the domain, $\;g(x) = f\big(T^{-1}(x)\big)$, &nbsp;<span class="small">$T:\mathbb{R}^2\to\mathbb{R}^2$ moves pixel positions, e.g. horizontal flip $T(x, y) = (W - x,\ y)$</span></p>
+  <p style="margin-top:0.4em"><b>Geometric</b>: transform the domain, $\;g(x) = f\big(T^{-1}(x)\big)$, &nbsp;<span class="small">$T:\mathbb{R}^2\to\mathbb{R}^2$ moves pixel positions, e.g. horizontal&nbsp;flip $T(x, y) = (W - x,\ y)$</span></p>
   <div data-widget="imgops" data-config='{"group":"geometric","tile":[150,112]}'></div>
 </section>
 
@@ -145,7 +160,7 @@
 
 <section>
   <h2>Lines stay lines, parallel lines stay parallel</h2>
-  <div data-widget="lines2d" data-config='{"width":600,"height":420,"autoplay":true}'></div>
+  <div data-widget="lines2d" data-config='{"width":600,"height":420,"autoplay":true,"modes":["linear"]}'></div>
   <p class="small">Why: $\;M(p + t\,d) = Mp + t\,(Md)$ — the line through $p$ with direction $d$ becomes the line through $Mp$ with direction $Md$. Parallel lines share $d$, so their images share $Md$.</p>
 </section>
 
@@ -178,7 +193,6 @@
         with $x = \tilde x / \tilde z,\ y = \tilde y / \tilde z$.</p>
       <p>$$\begin{bmatrix}x\\y\\1\end{bmatrix} \equiv \begin{bmatrix}\lambda x\\ \lambda y\\ \lambda\end{bmatrix}$$</p>
       <p class="small">A point = a ray through the origin.<br>Its intersection with the plane $\tilde z = 1$ is the ordinary point.</p>
-      <p class="small fragment">$\tilde z = 0$: a <b>point at infinity</b> (a direction) — we will meet these as vanishing points.</p>
     </div>
   </div>
 </section>
@@ -197,11 +211,6 @@
       </ul>
     </div>
   </div>
-</section>
-
-<section>
-  <h2>Poll</h2>
-  <div data-widget="slido" data-config='{"question":"Which matrix is a skew (shear)?","options":["$\\begin{bmatrix}1&0&t_x\\\\0&1&t_y\\\\0&0&1\\end{bmatrix}$","$\\begin{bmatrix}1&m&0\\\\0&1&0\\\\0&0&1\\end{bmatrix}$","$\\begin{bmatrix}s_x&0&0\\\\0&s_y&0\\\\0&0&1\\end{bmatrix}$","$\\begin{bmatrix}\\cos\\theta&-\\sin\\theta&0\\\\\\sin\\theta&\\cos\\theta&0\\\\0&0&1\\end{bmatrix}$"]}'></div>
 </section>
 
 <section>
@@ -227,7 +236,7 @@
 <section>
   <h2>A hierarchy of 2D transformations</h2>
   <table>
-    <tr><th>Transformation</th><th>Matrix</th><th>DoF</th><th>Preserves</th></tr>
+    <tr><th>Transformation</th><th>$3\times3$ matrix representation</th><th>DoF</th><th>Preserves</th></tr>
     <tr><td>translation</td><td>$\begin{bmatrix}I & t\\ 0^\top & 1\end{bmatrix}$</td><td>2</td><td>orientation + everything below</td></tr>
     <tr><td>rigid (Euclidean)</td><td>$\begin{bmatrix}R & t\\ 0^\top & 1\end{bmatrix}$</td><td>3</td><td>lengths</td></tr>
     <tr><td>similarity</td><td>$\begin{bmatrix}sR & t\\ 0^\top & 1\end{bmatrix}$</td><td>4</td><td>angles, ratios of lengths</td></tr>
@@ -235,6 +244,12 @@
     <tr class="fragment"><td><span style="color:var(--purple)">projective (homography)</span></td><td>$\begin{bmatrix}h_{11}&h_{12}&h_{13}\\h_{21}&h_{22}&h_{23}\\h_{31}&h_{32}&h_{33}\end{bmatrix}$</td><td>8</td><td>straight lines</td></tr>
   </table>
   <p class="small">Each row contains the ones above it. Homography: 9 entries but defined only up to scale ($H \equiv kH$), hence 8 DoF. We use it for image stitching in lecture 3.</p>
+</section>
+
+<section class="optional">
+  <h2>Beyond affine: projective and non-linear maps <span class="optional-badge">optional</span></h2>
+  <div data-widget="lines2d" data-config='{"width":600,"height":420,"autoplay":true,"mode":"projective"}'></div>
+  <p class="small">Projective: lines stay lines, but parallel lines may meet. Non-linear: lines bend, and no matrix describes the map.</p>
 </section>
 
 <section>
@@ -258,13 +273,13 @@
   <p class="small" style="font-size:0.75em; margin-top:0">A robot moves a grasped object. The motion is a map $g : \mathbb{R}^3 \to \mathbb{R}^3$ applied to <b>all</b> points of the object.</p>
   <div data-widget="rigid3d" data-config='{"width":560,"height":330}'></div>
   <div class="question" style="font-size:0.8em">Which mathematical property says "the object does not bend"?
-    <span class="fragment">→ distances are preserved, $\|g(p) - g(q)\| = \|p - q\|$ for all $p, q$: an <b>isometry</b>.</span></div>
-  <div class="fragment question" style="font-size:0.8em">Is every isometry a motion we can perform with a real object?</div>
+    <span>→ distances are preserved, $\|g(p) - g(q)\| = \|p - q\|$ for all $p, q$: an <b>isometry</b>.</span></div>
+  <div class="question" style="font-size:0.8em">Is every isometry a motion we can perform with a real object?</div>
 </section>
 
 <section>
   <h2>A mirror image is also an isometry</h2>
-  <div data-widget="rot3d" data-config='{"mode":"mirror","width":600,"height":360,"autoplay":true}'></div>
+  <div data-widget="rot3d" data-config='{"mode":"mirror","width":600,"height":360}'></div>
   <ul style="font-size:0.78em; margin-top:0.4em">
     <li>A reflection, e.g. $g(x) = \mathrm{diag}(-1, 1, 1)\,x$, preserves all distances — but <b>no rotation undoes it</b>: it turns a right-handed frame into a left-handed one.</li>
     <li>A real object can only be rotated and translated, so rigid motions must also preserve <b>orientation</b> (handedness). Next slide: this is exactly $\det A = +1$.</li>
@@ -285,6 +300,20 @@
     <li class="fragment">Excluding reflections: $A \in SO(3) = \{R \in \mathbb{R}^{3\times3} : R^\top R = I,\ \det R = 1\}$</li>
   </ol>
   <div class="takeaway fragment">Rigid motion $=$ rotation $+$ translation: $\quad g(x) = R x + t, \quad R \in SO(3)$</div>
+</section>
+
+<section class="optional">
+  <h2>From "preserves distances" to $R x + t$: why <span class="optional-badge">optional</span></h2>
+  <ol style="font-size:0.88em">
+    <li><b>Isometries are affine</b> (Mazur–Ulam): every surjective isometry of $\mathbb{R}^n$ is $g(x) = A x + t$.
+      <div class="small" style="font-size:0.78em; line-height:1.35; margin:0.15em 0 0.55em">Idea: the midpoint of $p, q$ is the only point at distance $\tfrac12\|p - q\|$ from both, so $g$ maps midpoints to midpoints; with continuity this forces $g$ to be affine. Here $t = g(0)$ is where the origin goes and $A x = g(x) - g(0)$.</div></li>
+    <li><b>$A$ preserves lengths</b>: $\|Ax\| = \|g(x) - g(0)\| = \|x - 0\| = \|x\|$.
+      <div class="small" style="font-size:0.78em; line-height:1.35; margin:0.15em 0 0.55em">Lengths determine dot products (polarisation): $\langle x, y\rangle = \tfrac12\left(\|x + y\|^2 - \|x\|^2 - \|y\|^2\right)$. Hence $\langle Ax, Ay\rangle = \langle x, y\rangle$, i.e. $x^\top A^\top A\, y = x^\top y$ for all $x, y$, so $A^\top A = I$: $A$ is <b>orthogonal</b> (its columns are orthonormal).</div></li>
+    <li><b>Only two values of $\det A$</b>: $\det(A^\top A) = \det(A)^2 = \det I = 1 \;\Rightarrow\; \det A = \pm 1$.
+      <div class="small" style="font-size:0.78em; line-height:1.35; margin:0.15em 0 0.55em">$\det A = +1$: rotation &nbsp;·&nbsp; $\det A = -1$: rotation composed with a reflection, like the mirror image two slides back.</div></li>
+    <li><b>A real object cannot be mirrored</b>, so $\det A = +1$: &nbsp;$A \in SO(3) = \{R \in \mathbb{R}^{3\times3} : R^\top R = I,\ \det R = 1\}$.</li>
+  </ol>
+  <div class="takeaway">Rigid motion $=$ rotation $+$ translation: $\quad g(x) = R x + t, \quad R \in SO(3)$</div>
 </section>
 
 <section>
@@ -308,8 +337,8 @@
   <p class="small">Properties of $SO(3)$: closed under products, $R^{-1} = R^\top \in SO(3)$, products do <b>not</b> commute.</p>
 </section>
 
-<section>
-  <h2>Rotations about the coordinate axes</h2>
+<section class="optional">
+  <h2>Rotations about the coordinate axes <span class="optional-badge">optional</span></h2>
   <div class="cols" style="grid-template-columns: auto 1fr">
     <div data-widget="rot3d" data-config='{"mode":"elementary","axis":"z","width":560,"height":400}'></div>
     <div style="font-size:0.72em">
@@ -321,8 +350,8 @@
   </div>
 </section>
 
-<section>
-  <h2>3D rotations do not commute</h2>
+<section class="optional">
+  <h2>3D rotations do not commute <span class="optional-badge">optional</span></h2>
   <div data-widget="rot3d" data-config='{"mode":"noncommute","width":620,"height":420,"autoplay":true}'></div>
 </section>
 
@@ -352,11 +381,6 @@
 <section class="section-slide">
   <div class="num">Part 3</div>
   <h1>Representing rotations</h1>
-</section>
-
-<section>
-  <h2>Poll</h2>
-  <div data-widget="slido" data-config='{"question":"How many numbers are needed to describe a 3D rotation?","options":["2","3","4","9"]}'></div>
 </section>
 
 <section>
@@ -513,7 +537,7 @@
   <h2>Exponential coordinates <span class="optional-badge">optional</span></h2>
   <div class="cols">
     <div>
-      <p>Spin with constant angular velocity $\omega$ for one second: every point obeys $\dot p = \omega \times p = [\omega]_\times\, p$. The solution:</p>
+      <p>Spin with constant angular velocity $\omega$ for one second: every point obeys<br>$\dot p = \omega \times p = [\omega]_\times\, p$. The solution:</p>
       <p>$$p(1) = e^{[\omega]_\times} p(0), \qquad R = e^{[\omega]_\times} = \sum_{n\ge0} \frac{[\omega]_\times^n}{n!}$$</p>
       <p class="small">With $\omega = \theta k$ and $[k]_\times^3 = -[k]_\times$ the series collapses to Rodrigues' formula.</p>
     </div>
@@ -889,9 +913,16 @@
   </ol>
 </section>
 
-<section class="title-slide">
+<section id="feedback" class="title-slide">
   <h1>Feedback</h1>
-  <p class="subtitle">Link / QR code for this lecture's feedback form</p>
+  <div style="display:flex; align-items:center; gap:1.5em; margin-top:0.5em">
+    <img src="../../assets/feedback-qr.svg" alt="QR code linking to tinyurl.com/mimuw-rc-feedback" style="width:340px; height:340px; box-sizing:content-box; padding:18px; background:#fff; border-radius:8px; margin:0">
+    <div>
+      <p>Please spend a minute: your feedback helps me improve the next lecture.</p>
+      <p style="font-family:var(--mono); font-size:1.1em"><a href="https://tinyurl.com/mimuw-rc-feedback">tinyurl.com/mimuw-rc-feedback</a></p>
+      <p class="small">Anonymous, no login, three questions.</p>
+    </div>
+  </div>
 </section>
 
 </div></div>

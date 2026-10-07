@@ -2,14 +2,24 @@
 // config: { group: "photometric" | "geometric", tile: [w, h] }
 import { h, testImage, inv3 } from './util.js';
 
+// Photometric ops act on the pixel values in code, not via the canvas `filter` property:
+// Safari (WebKit) ignores `filter` and would show every tile unchanged. Formulas follow the
+// CSS Filter Effects spec, so the result matches what the filters did in Chrome.
 const PHOTOMETRIC = [
-  ['original', g => g],
-  ['brightness +40%', 'brightness(1.4)'],
-  ['contrast −50%', 'contrast(0.5)'],
-  ['greyscale', 'grayscale(1)'],
-  ['hue shift', 'hue-rotate(120deg)'],
-  ['blur', 'blur(2.5px)'],
-  ['noise', 'noise'],
+  ['original', null],
+  ['brightness +40%', d => perPixel(d, c => 1.4 * c)],
+  ['contrast −50%', d => perPixel(d, c => 0.5 * c + 0.25 * 255)],
+  ['greyscale', d => colourMatrix(d, [0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722])],
+  ['hue shift', d => colourMatrix(d, hueRotate(120))],
+  ['blur', (d, W, H) => gaussianBlur(d, W, H, 2.5)],
+  ['noise', d => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5);
+    for (let i = 0; i < d.length; i += 4) {
+      const n = rnd() * 110;
+      d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    }
+  }],
 ];
 
 const GEOMETRIC = [
@@ -18,7 +28,7 @@ const GEOMETRIC = [
   ['horizontal flip', { m: [-1, 0, 0, 1, 1, 0] }],
   ['rotate 20°', { rot: 20 }],
   ['scale ×0.6', { m: [0.6, 0, 0, 0.6, 0.2, 0.2] }],
-  ['skew', { m: [1, 0, 0.4, 1, -0.2, 0] }],
+  ['shear', { m: [1, 0, 0.4, 1, -0.2, 0] }],
   ['perspective', { H: [0.8, 0.12, 0.08, 0.0, 0.9, 0.05, -0.25, 0.15, 1] }],
 ];
 
@@ -42,19 +52,53 @@ export function mount(el, cfg) {
 }
 
 function drawPhotometric(g, src, op, W, H) {
-  if (typeof op === 'string' && op !== 'noise') g.filter = op;
   g.drawImage(src, 0, 0, W, H);
-  g.filter = 'none';
-  if (op === 'noise') {
-    const d = g.getImageData(0, 0, W, H);
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5);
-    for (let i = 0; i < d.data.length; i += 4) {
-      const n = rnd() * 110;
-      d.data[i] += n; d.data[i + 1] += n; d.data[i + 2] += n;
-    }
-    g.putImageData(d, 0, 0);
+  if (!op) return;
+  const img = g.getImageData(0, 0, W, H);
+  op(img.data, W, H); // Uint8ClampedArray: results are rounded and clamped to 0..255
+  g.putImageData(img, 0, 0);
+}
+
+function perPixel(d, f) {
+  for (let i = 0; i < d.length; i += 4) { d[i] = f(d[i]); d[i + 1] = f(d[i + 1]); d[i + 2] = f(d[i + 2]); }
+}
+
+function colourMatrix(d, m) {
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gr = d[i + 1], b = d[i + 2];
+    d[i] = m[0] * r + m[1] * gr + m[2] * b;
+    d[i + 1] = m[3] * r + m[4] * gr + m[5] * b;
+    d[i + 2] = m[6] * r + m[7] * gr + m[8] * b;
   }
+}
+
+function hueRotate(deg) {
+  const c = Math.cos(deg * Math.PI / 180), s = Math.sin(deg * Math.PI / 180);
+  return [
+    0.213 + 0.787 * c - 0.213 * s, 0.715 - 0.715 * c - 0.715 * s, 0.072 - 0.072 * c + 0.928 * s,
+    0.213 - 0.213 * c + 0.143 * s, 0.715 + 0.285 * c + 0.140 * s, 0.072 - 0.072 * c - 0.283 * s,
+    0.213 - 0.213 * c - 0.787 * s, 0.715 - 0.715 * c + 0.715 * s, 0.072 + 0.928 * c + 0.072 * s,
+  ];
+}
+
+// Separable Gaussian blur (standard deviation sigma, in pixels), edges clamped.
+function gaussianBlur(d, W, H, sigma) {
+  const r = Math.ceil(3 * sigma), k = [];
+  for (let i = -r; i <= r; i++) k.push(Math.exp(-i * i / (2 * sigma * sigma)));
+  const sum = k.reduce((a, b) => a + b);
+  const pass = (from, to, dx, dy) => {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let ch = 0; ch < 3; ch++) {
+      let acc = 0;
+      for (let i = -r; i <= r; i++) {
+        const xx = Math.min(W - 1, Math.max(0, x + i * dx)), yy = Math.min(H - 1, Math.max(0, y + i * dy));
+        acc += k[i + r] * from[4 * (yy * W + xx) + ch];
+      }
+      to[4 * (y * W + x) + ch] = acc / sum;
+    }
+  };
+  const tmp = new Float32Array(d.length);
+  pass(d, tmp, 1, 0);
+  pass(tmp, d, 0, 1);
 }
 
 function drawGeometric(g, src, op, W, H) {

@@ -1,13 +1,17 @@
 // Linear maps keep lines straight and parallel lines parallel.
 // Drag the tips of the images of e1 (red) and e2 (green): they are the columns of M.
-// Buttons switch to a projective map (lines stay lines, parallelism lost) and a non-linear map (lines bend).
-// config: { width, height, m: [a, b, c, d] }
+// Buttons switch to a projective map (lines stay lines, parallelism lost) and a non-linear map (lines bend);
+// the readout always shows the map actually drawn (M, the homography H, or the non-linear formula).
+// config: { width, height, m: [a, b, c, d], modes: ['linear', 'projective', 'nonlinear'], mode, autoplay }
+// A single mode hides the mode buttons.
 import { C, h, fmt, arrow, isPrint } from './util.js';
 
 export function mount(el, cfg) {
   const W = cfg.width || 560, H = cfg.height || 420, S = 64; // px per unit
   const O = [W / 2, H / 2];
-  const state = { m: cfg.m || [1, 0.6, 0.3, 1], mode: 'linear', drag: null, t: 1 };
+  const modes = cfg.modes || ['linear', 'projective', 'nonlinear'];
+  const state = { m: cfg.m || [1, 0.6, 0.3, 1], mode: cfg.mode || modes[0], drag: null, t: 1 };
+  const PX = 0.12, PY = 0.08; // projective row: w = 1 + PX x' + PY y', with (x', y') = M (x, y)
   const canvas = h('canvas', { width: W, height: H, style: 'touch-action:none; cursor:grab' });
   const g = canvas.getContext('2d');
   const readout = h('div', { style: 'font-size:1.1em' });
@@ -23,7 +27,7 @@ export function mount(el, cfg) {
   function fullMap([x, y]) {
     const [a, b, c, d] = state.m;
     const lx = a * x + b * y, ly = c * x + d * y;
-    if (state.mode === 'projective') { const w = 1 + 0.12 * lx + 0.08 * ly; return w > 0.05 ? [lx / w, ly / w] : null; }
+    if (state.mode === 'projective') { const w = 1 + PX * lx + PY * ly; return w > 0.05 ? [lx / w, ly / w] : null; }
     if (state.mode === 'nonlinear') return [lx + 0.25 * Math.sin(ly * 1.1), ly + 0.06 * lx * lx];
     return [lx, ly];
   }
@@ -67,7 +71,13 @@ export function mount(el, cfg) {
     g.fillStyle = '#fff'; g.beginPath(); g.arc(o[0], o[1], 4, 0, 7); g.fill();
 
     const [a, b, c, d] = state.m;
-    readout.innerHTML = `$M = \\begin{bmatrix}\\color{#ff6b6b}{${fmt(a)}} & \\color{#5fd38d}{${fmt(b)}}\\\\ \\color{#ff6b6b}{${fmt(c)}} & \\color{#5fd38d}{${fmt(d)}}\\end{bmatrix}$`;
+    const M = `\\begin{bmatrix}\\color{#ff6b6b}{${fmt(a)}} & \\color{#5fd38d}{${fmt(b)}}\\\\ \\color{#ff6b6b}{${fmt(c)}} & \\color{#5fd38d}{${fmt(d)}}\\end{bmatrix}`;
+    readout.innerHTML = {
+      linear: `$M = ${M}$`,
+      // H = [1 0 0; 0 1 0; PX PY 1] * [M 0; 0 1]
+      projective: `$H = \\begin{bmatrix}${fmt(a)} & ${fmt(b)} & 0\\\\ ${fmt(c)} & ${fmt(d)} & 0\\\\ ${fmt(PX * a + PY * c)} & ${fmt(PX * b + PY * d)} & 1\\end{bmatrix}$`,
+      nonlinear: `$\\begin{bmatrix}x'\\\\ y'\\end{bmatrix} = ${M}\\begin{bmatrix}x\\\\ y\\end{bmatrix}$<div style="margin-top:0.4em">$f(x, y) = \\begin{bmatrix}x' + 0.25\\sin(1.1\\,y')\\\\ y' + 0.06\\,x'^2\\end{bmatrix}$</div>`,
+    }[state.mode];
     window.renderMathInElement?.(readout, { delimiters: [{ left: '$', right: '$', display: false }], throwOnError: false });
     note.innerHTML = {
       linear: '<b style="color:#5fd38d">linear</b>: straight lines stay straight, parallel lines stay parallel, the origin stays put. Drag the red and green arrow tips (= columns of M).',
@@ -102,8 +112,9 @@ export function mount(el, cfg) {
     const b = h('button', { onclick: () => { state.mode = mode; buttons.forEach(x => x.classList.toggle('active', x === b)); morph(); } }, label);
     return b;
   };
-  const buttons = [btn('linear', 'linear M'), btn('projective', 'projective'), btn('nonlinear', 'non-linear')];
-  buttons[0].classList.add('active');
+  const labels = { linear: 'linear M', projective: 'projective', nonlinear: 'non-linear' };
+  const buttons = modes.map(m => btn(m, labels[m]));
+  buttons[modes.indexOf(state.mode)].classList.add('active');
   const reset = h('button', { onclick: () => { state.m = cfg.m || [1, 0.6, 0.3, 1]; draw(); } }, 'reset');
   const legend = h('div', { class: 'dim' }, 'dashed: before · solid: after');
   function morph() {
@@ -123,7 +134,8 @@ export function mount(el, cfg) {
     h('div', { style: 'display:flex; flex-direction:column; gap:0.6em; width:15em; flex:none' },
       readout, note, legend,
       h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start' },
-        h('div', { style: 'display:flex; gap:0.3em; flex-wrap:wrap' }, buttons), h('div', { style: 'display:flex; gap:0.3em' }, play, reset)))));
+        ...(modes.length > 1 ? [h('div', { style: 'display:flex; gap:0.3em; flex-wrap:wrap' }, buttons)] : []),
+        h('div', { style: 'display:flex; gap:0.3em' }, play, reset)))));
   draw();
   if (cfg.autoplay && !isPrint()) setTimeout(morph, 400);
 }

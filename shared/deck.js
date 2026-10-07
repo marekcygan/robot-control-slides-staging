@@ -3,6 +3,7 @@
 // Widgets: <div data-widget="warp2d" data-config='{"preset":"skew"}'></div>
 import Reveal from '../vendor/reveal/reveal.mjs';
 import Notes from '../vendor/reveal/plugin/notes.mjs';
+import { applyTheme } from './theme.js';
 
 const widgetModules = {
   warp2d: () => import('./widgets/warp2d.js'),
@@ -61,6 +62,8 @@ function unmountWidget(el) {
   el.dataset.gen = String((+el.dataset.gen || 0) + 1);
 }
 
+await applyTheme(); // light colours for ?print-pdf and ?light
+
 const deck = new Reveal({
   width: 1280,
   height: 720,
@@ -77,10 +80,43 @@ const deck = new Reveal({
 await deck.initialize();
 renderMath(document.querySelector('.reveal .slides'));
 
+const frames = n => new Promise(res => { const f = k => (k ? requestAnimationFrame(() => f(k - 1)) : res()); f(n); });
+
+// Print view: replace a rendered WebGL canvas by a still image and free its context, so that decks with
+// more 3D figures than the browser's WebGL context limit (~16) still print every one of them.
+function freezeWebGL(el) {
+  el.querySelectorAll('canvas').forEach(c => {
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (!gl) return;
+    const img = new Image();
+    img.src = c.toDataURL('image/png');
+    img.style.cssText = c.style.cssText;
+    img.style.width = c.clientWidth + 'px';
+    img.style.height = c.clientHeight + 'px';
+    img.style.margin = '0';
+    c.replaceWith(img);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+  });
+}
+
+// Print view: mount every widget, one at a time, then set window.__deckReady (make-pdf.mjs waits for it).
+async function mountAllForPrint() {
+  for (const el of document.querySelectorAll('[data-widget]')) {
+    await mountWidget(el);
+    await frames(3);
+    freezeWebGL(el);
+  }
+  await document.fonts.ready;
+  renderMath(document.querySelector('.reveal .slides'));
+  await frames(3);
+  window.__deckReady = true;
+}
+
 // Mount widgets on the current slide and its neighbours; in print view mount everything.
+let printing = false;
 function mountAround() {
   if (deck.isPrintView()) {
-    document.querySelectorAll('[data-widget]').forEach(mountWidget);
+    if (!printing) { printing = true; mountAllForPrint(); }
     return;
   }
   const cur = deck.getCurrentSlide();

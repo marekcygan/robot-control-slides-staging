@@ -104,7 +104,7 @@ export function mount(el, cfg) {
       };
       anim = requestAnimationFrame(step);
     },
-  }, '▶ shear');
+  }, '▶ translate image');
 
   el.classList.add('widget');
   el.append(h('div', { style: 'display:flex; gap:0.8em; align-items:flex-start' },

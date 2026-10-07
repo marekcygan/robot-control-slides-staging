@@ -3,7 +3,7 @@
 //   "noncommute"  – two objects: Rx(90°) then Rz(90°) vs Rz(90°) then Rx(90°)
 //   "euler"       – ZYX Euler angles with gimbal rings; shows gimbal lock at pitch = ±90°
 //   "inspector"   – axis–angle input; readouts in all representations
-//   "mirror"      – a gripper and its mirror image; rotations try (and fail) to align them
+//   "mirror"      – a gripper and its mirror image (static)
 import { C, h, fmt, isPrint } from './util.js';
 import { THREE, makeStage, label, line, arrow3 } from './three-util.js';
 import { deg, Rx, Ry, Rz, mul, I, axisAngle, toAxisAngle, toQuat, toEulerZYX, eulerZYX } from './rotmath.js';
@@ -191,53 +191,17 @@ function inspector({ scene, render }, side, cfg) {
 }
 
 // ---------------------------------------------------------------------------
-function mirror({ scene, render }, side, cfg) {
+function mirror({ scene, render }, side) {
   const off = 1.7;
   const D = [-1, 0, 0, 0, 1, 0, 0, 0, 1];                 // reflection x -> -x (det = -1)
   const orig = makeBody(0.8), mir = makeBody(0.8);
   scene.add(orig, mir);
   setRotation(orig, I(), T(-off, 0, 0));
+  setRotation(mir, D, T(off, 0, 0));
   const l1 = label('original: right-handed', { color: C.fg, size: 0.3, font: '44px Inter, Arial' });
   l1.position.set(...T(-off, 0, 1.7)); scene.add(l1);
   const l2 = label('mirror image: left-handed', { color: C.fg, size: 0.3, font: '44px Inter, Arial' });
   l2.position.set(...T(off, 0, 1.7)); scene.add(l2);
-  // attempts: rotate the mirror image by 180° about one axis
-  const attempts = [
-    { name: 'rotate 180° about y', R: Ry, ok: ['x', 'y'], bad: 'z' },
-    { name: 'rotate 180° about z', R: Rz, ok: ['x', 'z'], bad: 'y' },
-    { name: 'rotate 180° about x', R: Rx, ok: [], bad: null },
-  ];
-  const state = { k: 0, p: isPrint() ? 1 : 0 };
-  const status = h('div', { style: 'font-size:1.05em; line-height:1.6; min-height:5.5em' });
-  const draw = () => {
-    const a = attempts[state.k];
-    setRotation(mir, mul(a.R(Math.PI * state.p), D), T(off, 0, 0));
-    let txt = `<div><b>attempt:</b> ${a.name}</div>`;
-    if (state.p > 0.98) {
-      const v = M => [M[0], M[4], M[8]];                  // diagonal = how each axis ends up
-      const d = v(mul(a.R(Math.PI), D));
-      const col = { x: d[0], y: d[1], z: d[2] };
-      txt += ['x', 'y', 'z'].map(k => `<span style="color:${col[k] > 0 ? C.green : C.red}">${k} ${col[k] > 0 ? '✓' : '✗'}</span>`).join(' &nbsp; ');
-      const nOk = d.filter(x => x > 0).length;
-      txt += `<div class="dim">${nOk === 2 ? 'two axes match — the third points the wrong way' : 'still does not match'}</div>`;
-    }
-    status.innerHTML = txt;
-    render();
-  };
-  const play = () => {
-    const step = (k) => {
-      state.k = k; state.p = 0; draw();
-      animateValue(0, 1, 1800, v => { state.p = v; draw(); }, () => setTimeout(() => {
-        if (k + 1 < attempts.length && cfg.autoplay !== false) step(k + 1);
-      }, 1500));
-    };
-    step(0);
-  };
-  const btns = attempts.map((a, k) => h('button', { onclick: () => { state.k = k; animateValue(0, 1, 1800, v => { state.p = v; draw(); }); } }, a.name));
-  side.append(status,
-    h('div', { class: 'small', style: 'font-size:0.95em' }, 'det = −1 for the reflection, +1 for every rotation: no rotation can undo it.'),
-    h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start; gap:0.3em' },
-      h('button', { onclick: play }, '▶ try all'), ...btns));
-  draw();
-  if (cfg.autoplay && !isPrint()) setTimeout(play, 600);
+  side.append(h('div', { class: 'small', style: 'font-size:0.95em' }, 'det = −1 for the reflection, +1 for every rotation: no rotation can undo it.'));
+  render();
 }

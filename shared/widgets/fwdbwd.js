@@ -2,6 +2,7 @@
 // Forward: push every input pixel to round(T(x)) -> holes when T enlarges.
 // Backward: for every output pixel x, read f(round(T⁻¹(x))) -> every pixel filled.
 // config: { scale: 1.8, angle: 20, width: 300, height: 225 }
+import { LIGHT } from '../theme.js';
 import { C, h } from './util.js';
 import { testImage } from './util.js';
 
@@ -32,7 +33,8 @@ export function mount(el, cfg) {
     const { fwd, inv } = transform();
     // forward
     const gf = cf.getContext('2d'), of = gf.createImageData(W, H);
-    for (let i = 3; i < of.data.length; i += 4) of.data[i] = 255;
+    const empty = LIGHT ? 246 : 0; // no source pixel (background, forward-warping holes)
+    for (let i = 0; i < of.data.length; i += 4) { of.data[i] = of.data[i + 1] = of.data[i + 2] = empty; of.data[i + 3] = 255; }
     for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
       const [u, v] = fwd(x + 0.5, y + 0.5).map(Math.floor);
       if (u < 0 || v < 0 || u >= W || v >= H) continue;
@@ -44,7 +46,7 @@ export function mount(el, cfg) {
     const gb = cb.getContext('2d'), ob = gb.createImageData(W, H);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const [sx, sy] = inv(x + 0.5, y + 0.5).map(Math.floor), di = 4 * (y * W + x);
-      ob.data[di + 3] = 255;
+      ob.data[di] = ob.data[di + 1] = ob.data[di + 2] = empty; ob.data[di + 3] = 255;
       if (sx < 0 || sy < 0 || sx >= SW || sy >= SH) continue;
       const si = 4 * (sy * SW + sx);
       ob.data[di] = sd[si]; ob.data[di + 1] = sd[si + 1]; ob.data[di + 2] = sd[si + 2];

@@ -3,6 +3,7 @@
 //   "noncommute"  – two objects: Rx(90°) then Rz(90°) vs Rz(90°) then Rx(90°)
 //   "euler"       – ZYX Euler angles with gimbal rings; shows gimbal lock at pitch = ±90°
 //   "inspector"   – axis–angle input; readouts in all representations
+//   "oneaxis"     – Euler's rotation theorem: Rx(α), Ry(β), Rz(γ) in turn vs one rotation by θ about k
 //   "mirror"      – a gripper and its mirror image (static)
 import { C, h, fmt, isPrint } from './util.js';
 import { THREE, makeStage, label, line, arrow3 } from './three-util.js';
@@ -56,13 +57,13 @@ export function mount(el, cfg) {
   const W = cfg.width || 600, H = cfg.height || 440;
   const canvas = h('canvas', { width: W, height: H });
   const stage = makeStage(canvas, {
-    position: cfg.camera || ({ noncommute: [0.4, 2.7, 5.9], euler: [3.7, 2.9, 4.2], mirror: [0.3, 2.3, 4.6] }[mode] || [2.9, 2.2, 3.2]),
+    position: cfg.camera || ({ noncommute: [0.4, 2.7, 5.9], oneaxis: [0.3, 2.1, 4.9], euler: [3.7, 2.9, 4.2], mirror: [0.3, 2.3, 4.6] }[mode] || [2.9, 2.2, 3.2]),
     target: cfg.target || [0, 0.2, 0],
   });
   const side = h('div', { style: 'display:flex; flex-direction:column; gap:0.5em; min-width:14em' });
   el.classList.add('widget');
   el.append(h('div', { style: 'display:flex; gap:0.8em; align-items:flex-start' }, canvas, side));
-  ({ elementary, noncommute, euler, inspector, mirror })[mode](stage, side, cfg);
+  ({ elementary, noncommute, oneaxis, euler, inspector, mirror })[mode](stage, side, cfg);
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,52 @@ function noncommute({ scene, render }, side, cfg) {
   const play = h('button', { onclick: () => animateValue(0, 2, 2400, v => { state.p = v; s.value = v; draw(); }) }, '▶ play both');
   side.append(readout, h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start' },
     h('div', {}, h('label', {}, 'progress '), s), play));
+  draw();
+  if (cfg.autoplay && !isPrint()) setTimeout(() => play.click(), 500);
+}
+
+// ---------------------------------------------------------------------------
+// Euler's rotation theorem: three rotations about the fixed axes, one after another (left), end in the
+// same pose as a single rotation by θ about the axis k of their product (right).
+function oneaxis({ scene, render }, side, cfg) {
+  const off = 2.0;
+  const L = makeBody(0.8), Rb = makeBody(0.8);
+  scene.add(L, Rb);
+  worldAxes(scene, 1.4, [-off, 0, 0]); worldAxes(scene, 1.4, [off, 0, 0]);
+  const lab1 = label('three rotations', { color: C.fg, size: 0.28, font: '44px Inter, Arial' });
+  lab1.position.set(...T(-off, 0, -1.25)); scene.add(lab1);
+  const lab2 = label('one rotation about k', { color: C.fg, size: 0.28, font: '44px Inter, Arial' });
+  lab2.position.set(...T(off, 0, -1.25)); scene.add(lab2);
+  const axisGroup = new THREE.Group(); scene.add(axisGroup);
+  const state = { a: cfg.a ?? 60, b: cfg.b ?? 45, c: cfg.c ?? 90, p: isPrint() ? 3 : 0 };
+  const readout = h('div', { style: 'font-size:1.0em; line-height:1.9' });
+  const draw = () => {
+    const a = state.a * deg, b = state.b * deg, c = state.c * deg;
+    const R = mul(Rz(c), mul(Ry(b), Rx(a)));          // Rx first, Rz last (fixed axes: later multiplies from the left)
+    const { axis: k, angle: th } = toAxisAngle(R);
+    const u = i => Math.min(1, Math.max(0, state.p - i)); // progress of step i (0, 1, 2)
+    setRotation(L, mul(Rz(c * u(2)), mul(Ry(b * u(1)), Rx(a * u(0)))), T(-off, 0, 0));
+    setRotation(Rb, axisAngle(k, th * state.p / 3), T(off, 0, 0));
+    axisGroup.clear();
+    const at = (t) => T(off + k[0] * t, k[1] * t, k[2] * t);
+    axisGroup.add(line([at(-1.6), at(1.8)], 0xb28dff));
+    axisGroup.add(arrow3(at(1.5), at(1.9), 0xb28dff, 0.16));
+    const lk = label('k', { color: C.purple, size: 0.3 }); lk.position.set(...at(2.05)); axisGroup.add(lk);
+    const step = state.p >= 3 ? 3 : Math.floor(state.p);
+    const hl = (i, s) => (step === i ? `\\color{${C.accent}}{${s}}` : s);
+    tex(readout,
+      `<div>left: $${hl(0, `R_x(${state.a}^\\circ)`)}$, then $${hl(1, `R_y(${state.b}^\\circ)`)}$, then $${hl(2, `R_z(${state.c}^\\circ)`)}$</div>` +
+      `<div>$R = R_z R_y R_x = ${matTeX(R)}$</div>` +
+      `<div>right: $\\theta = ${fmt(th / deg, 0)}^\\circ$ about $k = (${k.map(v => fmt(v)).join(', ')})$</div>`);
+    render();
+  };
+  const s = h('input', { type: 'range', min: 0, max: 3, step: 0.01, value: state.p });
+  s.addEventListener('input', () => { state.p = parseFloat(s.value); draw(); });
+  const play = h('button', { onclick: () => animateValue(0, 3, 4500, v => { state.p = v; s.value = v; draw(); }) }, '▶ play both');
+  const angle = (key, name) => slider(state, key, -180, 180, 1, name, () => { state.p = 3; s.value = 3; draw(); });
+  side.append(readout, h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start' },
+    h('div', {}, h('label', {}, 'progress '), s), play,
+    angle('a', 'α (x)'), angle('b', 'β (y)'), angle('c', 'γ (z)')));
   draw();
   if (cfg.autoplay && !isPrint()) setTimeout(() => play.click(), 500);
 }

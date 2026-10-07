@@ -422,8 +422,8 @@
   </div>
 </section>
 
-<section>
-  <h2>Gimbal lock</h2>
+<section class="optional">
+  <h2>Gimbal lock <span class="optional-badge">optional</span></h2>
   <div data-widget="rot3d" data-config='{"mode":"euler","width":500,"height":300,"pitch":20}'></div>
   <div class="cols" style="margin-top:0.3em; font-size:0.66em; gap:1em">
     <div>
@@ -441,8 +441,8 @@
   </div>
 </section>
 
-<section>
-  <h2>Gimbal lock: the algebra</h2>
+<section class="optional">
+  <h2>Gimbal lock: the algebra <span class="optional-badge">optional</span></h2>
   <p>At $\theta = 90^\circ$, $R_y(90^\circ) = \begin{bmatrix}0&0&1\\0&1&0\\-1&0&0\end{bmatrix}$ and</p>
   <p>$$R_z(\psi)\,R_y(90^\circ)\,R_x(\varphi) = \begin{bmatrix} 0 & \sin(\varphi-\psi) & \cos(\varphi-\psi) \\ 0 & \cos(\varphi-\psi) & -\sin(\varphi-\psi) \\ -1 & 0 & 0 \end{bmatrix}$$</p>
   <ul>
@@ -481,7 +481,13 @@
 </section>
 
 <section>
-  <h2>From a matrix to axis–angle</h2>
+  <h2>Euler's theorem, visually</h2>
+  <div data-widget="rot3d" data-config='{"mode":"oneaxis","width":620,"height":380,"autoplay":true}'></div>
+  <p class="small">Three rotations about the coordinate axes, one after another (left), end in exactly the same pose as <b>one</b> rotation by $\theta$ about a single axis $k$ (right). This holds for any product of rotations.</p>
+</section>
+
+<section class="optional">
+  <h2>From a matrix to axis–angle <span class="optional-badge">optional</span></h2>
   <div class="cols">
     <div>
       <p><b>Angle</b> from the trace (the trace does not depend on the basis):</p>
@@ -501,8 +507,8 @@
   </div>
 </section>
 
-<section>
-  <h2>From axis–angle to a matrix: Rodrigues' formula</h2>
+<section class="optional">
+  <h2>From axis–angle to a matrix: Rodrigues' formula <span class="optional-badge">optional</span></h2>
   <div class="cols">
     <div>
       <svg viewBox="0 0 330 280" style="width:100%; max-height:430px">
@@ -782,7 +788,7 @@
   <h2>Where do parallel lines meet?</h2>
   <div class="cols">
     <div>
-      <p>A 3D line through $P_0$ with direction $l = (l_x, l_y, l_z)$, in camera coordinates: $\;P(t) = P_0 + t\,l$.</p>
+      <p>A 3D line through $P_0 = (x_0, y_0, z_0)$ with direction $l = (l_x, l_y, l_z)$, in camera coordinates: $\;P(t) = P_0 + t\,l$.</p>
       <p>$$u(t) = f_x\,\frac{x_0 + t\,l_x}{z_0 + t\,l_z} + o_x \;\xrightarrow{t\to\infty}\; f_x\frac{l_x}{l_z} + o_x$$</p>
       <p>The limit does not depend on $P_0$: all lines with direction $l$ meet at the <b>vanishing point</b></p>
       <p>$$\tilde u_{vp} = K\,l$$</p>

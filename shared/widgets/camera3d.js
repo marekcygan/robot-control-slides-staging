@@ -94,8 +94,6 @@ function railsScene(railYaw = 0) {
     segs.push([a, b, 0xc9ccd4]);
   }
   for (let t = -2; t < L; t += 1.2) segs.push([add(scl(n, -0.9), scl(d, t)), add(scl(n, 0.9), scl(d, t)), 0x8a5a3a]);
-  // a perpendicular road for a second vanishing point
-  for (const s of [-1.5, 1.5]) segs.push([add(add(scl(d, 10), scl(d, s)), scl(n, -60)), add(add(scl(d, 10), scl(d, s)), scl(n, 60)), 0x5a606c]);
   return { segs, pts: [], dir: d };
 }
 

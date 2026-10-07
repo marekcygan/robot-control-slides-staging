@@ -102,7 +102,7 @@ export function mount(el, cfg) {
   el.classList.add('widget');
   el.append(h('div', { style: 'display:flex; gap:0.8em; align-items:flex-start' },
     canvas,
-    h('div', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:0.4em' },
+    h('div', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:0.4em; width:15em; flex:none' },
       plot, readout,
       h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start; gap:0.25em' },
         h('div', { style: 'display:flex; flex-wrap:wrap; gap:0.3em' }, presetBtns),

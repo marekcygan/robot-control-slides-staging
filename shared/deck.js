@@ -22,6 +22,19 @@ const widgetModules = {
   rigid3d: () => import('./widgets/rigid3d.js'),
   pinhole2d: () => import('./widgets/pinhole2d.js'),
   lens2d: () => import('./widgets/lens2d.js'),
+  calib: () => import('./widgets/calib.js'),
+  lagrange: () => import('./widgets/lagrange.js'),
+  ransac: () => import('./widgets/ransac.js'),
+  pnp: () => import('./widgets/pnp.js'),
+  stereo2d: () => import('./widgets/stereo2d.js'),
+  stereomatch: () => import('./widgets/stereomatch.js'),
+  earthfield: () => import('./widgets/earthfield.js'),
+  magsphere: () => import('./widgets/magsphere.js'),
+  headingerr: () => import('./widgets/headingerr.js'),
+  orientcheck: () => import('./widgets/orientcheck.js'),
+  magekf: () => import('./widgets/magekf.js'),
+  magplane: () => import('./widgets/magplane.js'),
+  softiron2d: () => import('./widgets/softiron2d.js'),
 };
 
 function renderMath(root) {

@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magnetometer calibration</title>
+  <link rel="stylesheet" href="../../vendor/reveal/reset.css">
+  <link rel="stylesheet" href="../../vendor/reveal/reveal.css">
+  <link rel="stylesheet" href="../../vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../shared/deck.css">
+  <script src="../../vendor/katex/katex.min.js"></script>
+  <script src="../../vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="importmap">{ "imports": { "three": "../../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- ============================================================ -->
+<section class="title-slide">
+  <h1>Magnetometer calibration<br><span style="font-size:0.6em; color:var(--fg-dim)">how ArduPilot calibrates a compass</span></h1>
+  <p class="subtitle">Robot Control · supplementary notes</p>
+</section>
+
+<section>
+  <h2>Questions</h2>
+  <div class="cols">
+    <ol>
+      <li>What does a magnetometer measure, and how does it give a heading?</li>
+      <li>What does calibration estimate, and how?</li>
+      <li>Does calibration use the local magnetic field? Is GPS needed?</li>
+      <li>How is the orientation of the compass relative to the IMU found? What about a tilt of a few degrees?</li>
+    </ol>
+    <ol start="5">
+      <li>Calibrated in Opole, flying in Tallinn: recalibrate?</li>
+      <li>What is declination and how is it applied?</li>
+      <li>What is <b>3-axis fusion</b>?</li>
+    </ol>
+  </div>
+  <div class="takeaway" style="margin-top:1em">Calibration describes the <b>vehicle</b>, not the place. The place enters through a position (GPS) and a table of the Earth's field.</div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 1</div>
+  <h1>The Earth's magnetic field</h1>
+</section>
+
+<section>
+  <h2>The field at a location is a 3D vector</h2>
+  <div style="font-size:1.1em"><div data-widget="earthfield" data-config='{"width":620,"height":440,"city":"Warsaw"}'></div></div>
+</section>
+
+<section>
+  <h2>Heading from a magnetometer</h2>
+  <div class="cols">
+    <div>
+      <p>Roll $\phi$ and pitch $\theta$ come from the IMU. Rotate the reading $m$ (body frame) to a level frame:</p>
+      <p>$$m_\ell = R_y(\theta)\,R_x(\phi)\; m$$</p>
+      <p>The horizontal part gives the <b>magnetic</b> heading; add the declination:</p>
+      <p>$$\begin{aligned}\psi_{mag} &= \operatorname{atan2}(-m_{\ell,y},\; m_{\ell,x})\\ \psi &= \psi_{mag} + D\end{aligned}$$</p>
+    </div>
+    <div>
+      <div class="box">
+        <h3>Only one angle</h3>
+        <p style="font-size:0.85em">The magnetometer adds <b>yaw</b> only; roll and pitch are already known from gravity.</p>
+      </div>
+      <div class="box" style="margin-top:0.6em">
+        <h3>A small signal</h3>
+        <table>
+          <tr><th></th><th>$H$ (mG)</th><th>$Z$ (mG)</th><th>$H/F$</th></tr>
+          <tr><td>Tallinn</td><td>151</td><td>501</td><td>29 %</td></tr>
+          <tr><td>Toruń</td><td>185</td><td>469</td><td>37 %</td></tr>
+          <tr><td>Warsaw</td><td>188</td><td>468</td><td>37 %</td></tr>
+          <tr><td>Opole</td><td>196</td><td>458</td><td>39 %</td></tr>
+          <tr><td>Kyiv</td><td>195</td><td>470</td><td>38 %</td></tr>
+        </table>
+        <p style="font-size:0.7em" class="dim">Any error that leaks a little of $Z$ into the horizontal plane is amplified.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 2</div>
+  <h1>What the sensor measures</h1>
+</section>
+
+<section>
+  <h2>An ideal sensor on a rotating aircraft</h2>
+  <p style="font-size:0.8em">The sensor measures in the <b>body frame</b>: $m = R^\top e$ changes as the aircraft turns. Rotated back with the IMU attitude, $R\,m = e$: the yellow arrow never moves.</p>
+  <div style="font-size:1.05em"><div data-widget="magplane" data-config='{"effect":"ideal","width":620,"height":440}'></div></div>
+</section>
+
+<section>
+  <h2>Hard iron: a magnet the aircraft carries</h2>
+  <div class="cols">
+    <div style="font-size:0.82em">
+      <p>Parts with their own <b>permanent</b> magnetism:</p>
+      <ul>
+        <li>magnets in the motor, servos, buzzer</li>
+        <li>magnetised steel screws, standoffs</li>
+        <li>the sensor's own zero offset</li>
+      </ul>
+      <p>Their field at the compass is the same vector $h$ <b>in the body frame</b>, wherever the aircraft points:</p>
+      <p>$$m = R^\top e + h$$</p>
+      <p style="font-size:0.85em">Typical size: tens to hundreds of mG — comparable to the horizontal field ($H \approx 190$ mG in Warsaw).</p>
+      <p class="dim" style="font-size:0.75em">Look-alike: current in power wires — the same shift, but it changes with throttle (<code>COMPASS_MOT</code>).</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 460 380" style="width:100%" font-family="Inter, Arial" font-size="16">
+        <defs>
+          <marker id="hr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#ff6b6b"/></marker>
+          <marker id="hg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9aa1ae"/></marker>
+        </defs>
+        <g fill="#272b34" stroke="#5a606c" stroke-width="1.5">
+          <rect x="40" y="150" width="380" height="44" rx="8"/>
+          <rect x="216" y="40" width="28" height="290" rx="12"/>
+          <rect x="160" y="300" width="140" height="22" rx="6"/>
+        </g>
+        <g fill="none" stroke="#ff6b6b" stroke-width="1.2" stroke-dasharray="5 4" opacity="0.8">
+          <ellipse cx="230" cy="72" rx="34" ry="44"/><ellipse cx="230" cy="72" rx="62" ry="80"/><ellipse cx="230" cy="72" rx="92" ry="122"/>
+        </g>
+        <rect x="222" y="52" width="16" height="20" fill="#ff6b6b"/><rect x="222" y="72" width="16" height="20" fill="#5ab0ff"/>
+        <rect x="220" y="205" width="20" height="18" fill="#5fd38d"/>
+        <line x1="230" y1="205" x2="262" y2="120" stroke="#ff6b6b" stroke-width="3" marker-end="url(#hr)"/>
+        <line x1="400" y1="40" x2="400" y2="120" stroke="#9aa1ae" stroke-width="3" marker-end="url(#hg)"/>
+        <g font-size="15">
+          <text x="250" y="66" fill="#ff6b6b">magnet (motor)</text>
+          <text x="140" y="236" fill="#5fd38d">compass</text>
+          <text x="108" y="138" fill="#ff6b6b">h: fixed in the body</text>
+          <text x="330" y="30" fill="#9aa1ae">e: fixed in the world</text>
+          <text x="20" y="360" fill="#9aa1ae">top view, nose up</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Hard iron while the aircraft rotates</h2>
+  <p style="font-size:0.8em">The red arrow $h$ is fixed to the aircraft (drawn at the compass) and turns with it; moved to the tip of $e$ it shows the reading $e + R\,h$, which <b>wobbles around $e$</b>: its length and direction change with the attitude. The tip moves on a sphere of radius $|h|$ around the tip of $e$.</p>
+  <div style="font-size:1.05em"><div data-widget="magplane" data-config='{"effect":"hard","width":620,"height":440}'></div></div>
+</section>
+
+<section>
+  <h2>Soft iron: steel on the aircraft, magnetised by the Earth</h2>
+  <div class="cols c-3" style="font-size:0.7em; gap:0.6em">
+    <div class="box"><b>Earth's field</b>: fixed in the <b>world</b>, points to magnetic north.</div>
+    <div class="box"><b style="color:var(--purple)">Steel spar</b> (in the wing) and <b style="color:var(--green)">compass</b>: fixed in the <b>aircraft</b>, turn with it.</div>
+    <div class="box">The field magnetises the spar <b>along its length</b>; the spar adds that to what the compass reads.</div>
+  </div>
+  <div class="cols" style="grid-template-columns: 800px 1fr; margin-top:0.4em; gap:0.8em">
+    <div style="font-size:0.95em"><div data-widget="softiron2d" data-config='{"width":390,"height":320,"k":0.6,"heading":50}'></div></div>
+    <div style="font-size:0.7em">
+      <p>Only the part of the field <b>along the spar</b> is amplified:</p>
+      <p>$$m = b + k\,(u\cdot b)\,u = \underbrace{(I + k\,u u^\top)}_{W}\, b$$</p>
+      <p>In the aircraft frame the tip of $m$ follows an <b>ellipse</b>, stretched along the spar.</p>
+      <p>Spar along the <b>fuselage</b>: the same, turned by 90° (N/S longer, E/W unchanged, heading error of opposite sign).</p>
+      <p class="dim">Real effect: a few % ($k$ exaggerated here).</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Soft iron while the aircraft rotates</h2>
+  <p style="font-size:0.8em">The induced part (purple) follows the spar: largest when the spar points along the field, zero across it. Unlike hard iron it <b>scales with the field</b>. (Exaggerated here: 80 % instead of a few %.)</p>
+  <div style="font-size:1.05em"><div data-widget="magplane" data-config='{"effect":"soft","width":620,"height":440}'></div></div>
+</section>
+
+<section>
+  <h2>Side by side</h2>
+  <div class="cols c-3" style="gap:0.6em">
+    <div><h3 style="margin-bottom:0.2em">ideal</h3><div data-widget="magplane" data-config='{"effect":"ideal","width":385,"height":300,"compact":true}'></div></div>
+    <div><h3 style="margin-bottom:0.2em; color:var(--red)">hard iron</h3><div data-widget="magplane" data-config='{"effect":"hard","width":385,"height":300,"compact":true}'></div></div>
+    <div><h3 style="margin-bottom:0.2em; color:var(--purple)">soft iron</h3><div data-widget="magplane" data-config='{"effect":"soft","width":385,"height":300,"compact":true}'></div></div>
+  </div>
+  <div class="cols c-3" style="font-size:0.72em; gap:0.6em; margin-top:0.3em">
+    <div>the reading never moves: $R\,m = e$</div>
+    <div>a fixed shift $h$ that turns with the aircraft</div>
+    <div>a stretch along the spar, proportional to the field</div>
+  </div>
+  <div class="takeaway" style="font-size:0.8em">Next: forget the aircraft and plot every reading $m$ in the sensor frame.</div>
+</section>
+
+<section>
+  <h2>All readings in the sensor frame: a sphere</h2>
+  <div class="cols c-2-1">
+    <div><div data-widget="magsphere" data-config='{"width":470,"height":400,"hard":0,"soft":0,"noise":3,"controls":["noise","collect"]}'></div></div>
+    <div style="font-size:0.85em">
+      <p>Attitude $R_i$ (body → NED), Earth field $e$:</p>
+      <p>$$b_i = R_i^\top e, \qquad \|b_i\| = F$$</p>
+      <p>Every reading lies on a <b>sphere</b> of radius $F$ centred at $0$.</p>
+      <p class="dim">Press <i>collect</i>: one dot per reading while the vehicle is turned by hand.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Hard iron: the sphere moves</h2>
+  <div class="cols c-2-1">
+    <div><div data-widget="magsphere" data-config='{"width":470,"height":400,"hard":250,"soft":0,"noise":3,"controls":["hard","fit"]}'></div></div>
+    <div style="font-size:0.85em">
+      <p>Every reading gets the same $h$ added:</p>
+      <p>$$m_i = b_i + h$$</p>
+      <p>The sphere keeps its radius, its <b>centre moves</b> to $h$.</p>
+      <p>A 250 mG offset is larger than the whole horizontal field: the uncorrected heading is useless.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Soft iron and gain: the sphere stretches</h2>
+  <div class="cols c-2-1">
+    <div><div data-widget="magsphere" data-config='{"width":470,"height":400,"hard":0,"soft":0.3,"noise":3,"fit":true,"controls":["soft","fit"]}'></div></div>
+    <div style="font-size:0.85em">
+      <p>Every reading is multiplied by the same $W$:</p>
+      <p>$$m_i = W b_i, \qquad b_i = R_i^\top e$$</p>
+      <p style="font-size:0.85em">One spar (slide 10): $W = I + k\,uu^\top$. Several pieces of steel, unequal axis gains: more terms of the same form, so $W$ stays <b>symmetric</b>:</p>
+      <p>$$W = I + \textstyle\sum_j k_j\, u_j u_j^\top = Q\,\Lambda\,Q^\top$$</p>
+      <p style="font-size:0.85em">The sphere becomes an <b>ellipsoid</b>: axes along the columns of $Q$, semi-axes $\lambda_i F$ (purple: fitted).</p>
+      <p class="dim">A rotation of the sensor is not of this form — see part 4.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The model and the correction ArduPilot stores</h2>
+  <div class="cols">
+    <div>
+      <p>$$m = W\,b + h + n$$</p>
+      <p style="font-size:0.68em; margin-top:-0.2em" class="dim">$m$: reading · $b = R^\top e$: Earth field in the body frame · $W$: soft iron and gains · $h$: hard iron (fixed in the body) · $n$: sensor noise</p>
+      <p>$$\hat b = s\, M\,(m + o), \qquad M \propto W^{-1},\; o = -h$$</p>
+      <p style="font-size:0.68em; margin-top:-0.2em" class="dim">$\hat b$: the corrected reading, an estimate of $b$</p>
+      <table>
+        <tr><th>symbol</th><th>parameter</th><th>meaning</th></tr>
+        <tr><td>$o$</td><td><code>COMPASS_OFS_X/Y/Z</code></td><td>hard iron, sensor bias</td></tr>
+        <tr><td>$\operatorname{diag} M$</td><td><code>COMPASS_DIA_X/Y/Z</code></td><td>axis gains</td></tr>
+        <tr><td>off-diag. $M$</td><td><code>COMPASS_ODI_X/Y/Z</code></td><td>cross-axis, soft iron</td></tr>
+        <tr><td>$s$</td><td><code>COMPASS_SCALE</code></td><td>overall gain (0 = unused)</td></tr>
+      </table>
+    </div>
+    <div>
+      <svg viewBox="0 0 480 380" style="width:100%" font-family="Inter, Arial" font-size="17">
+        <defs><marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9aa1ae"/></marker></defs>
+        <g fill="none" stroke="#3a3f4b" stroke-width="1.5">
+          <rect x="30" y="6" width="300" height="44" rx="8"/><rect x="30" y="74" width="300" height="44" rx="8"/>
+          <rect x="30" y="142" width="300" height="44" rx="8" stroke="#f2b134"/><rect x="30" y="210" width="300" height="44" rx="8"/>
+          <rect x="30" y="278" width="300" height="44" rx="8"/>
+        </g>
+        <g stroke="#9aa1ae" stroke-width="1.5" marker-end="url(#pa)">
+          <line x1="180" y1="50" x2="180" y2="72"/><line x1="180" y1="118" x2="180" y2="140"/><line x1="180" y1="186" x2="180" y2="208"/>
+          <line x1="180" y1="254" x2="180" y2="276"/><line x1="180" y1="322" x2="180" y2="350"/>
+        </g>
+        <g fill="#e7e9ee" text-anchor="middle">
+          <text x="180" y="34">raw reading (chip frame)</text>
+          <text x="180" y="102">rotate to the body frame</text>
+          <text x="180" y="170" fill="#f2b134">+ o, × s, × M  (calibration)</text>
+          <text x="180" y="238">+ motor / current compensation</text>
+          <text x="180" y="306">filter, health checks</text>
+          <text x="180" y="372">EKF3</text>
+        </g>
+        <g fill="#9aa1ae" font-size="14" text-anchor="start">
+          <text x="342" y="102">part 4</text><text x="342" y="238">COMPASS_MOT</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 3</div>
+  <h1>Fitting the ellipsoid</h1>
+</section>
+
+<section>
+  <h2>Calibration = least squares on a sphere</h2>
+  <div class="cols">
+    <div>
+      <p>Find $o$, $M$ (symmetric) and $r$ so that every corrected sample has the same length:</p>
+      <p>$$\min_{o,\,M,\,r}\; \sum_i \big(r - \|M(m_i + o)\|\big)^2$$</p>
+      <p style="font-size:0.85em">No heading, no position and no field direction are needed: <b>any</b> field gives a sphere.</p>
+      <p style="font-size:0.85em"><b>fitness</b> = RMS residual (mG).</p>
+    </div>
+    <div style="font-size:0.8em">
+      <h3>CompassCalibrator</h3>
+      <ol>
+        <li>collect 300 samples, each far enough from the others</li>
+        <li>sphere fit ($o$, $r$), Levenberg–Marquardt</li>
+        <li>drop samples that are now too close; collect again</li>
+        <li>ellipsoid fit ($o$, diag, off-diag)</li>
+        <li>accept if: $150 &lt; r &lt; 950$ mG, $|o_k| &lt; 1800$, $0.2 &lt; M_{kk} &lt; 5$, $|M_{kl}| &lt; 1$, fitness $\le$ <code>COMPASS_CAL_FIT</code> (16)</li>
+        <li>scale to the local field (needs a position)</li>
+        <li>check the orientation (uses the IMU)</li>
+        <li>save; reboot</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Try it: hard iron + soft iron + noise</h2>
+  <div style="font-size:1.1em"><div data-widget="magsphere" data-config='{"width":640,"height":460,"hard":220,"soft":0.25,"noise":5,"dist":0.72}'></div></div>
+</section>
+
+<section>
+  <h2>Why turn it in every direction?</h2>
+  <div class="cols c-2-1">
+    <div><div data-widget="magsphere" data-config='{"width":470,"height":400,"hard":220,"soft":0.2,"noise":3,"motion":"yaw","fit":true,"controls":["motion","fit","collect"]}'></div></div>
+    <div style="font-size:0.85em">
+      <p>A <b>flat spin</b> on a table: $b_z$ is the same for every sample — the readings lie on one circle.</p>
+      <p>The $z$ offset, the $z$ gain and the radius cannot be separated: the fit is ill-conditioned (compare the one-face checkerboard in DLT, lecture 2).</p>
+      <p class="dim">ArduPilot tracks which of 80 cells of a sphere have samples and only accepts a new sample far from the others.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The scale needs a position</h2>
+  <div class="cols">
+    <div>
+      <p>After the fit (<code>fix_radius</code>):</p>
+      <p>$$s = \texttt{COMPASS\_SCALE} = \frac{F_{\text{WMM}}(\text{lat}, \text{lon})}{r}$$</p>
+      <ul style="font-size:0.85em">
+        <li>corrects the <b>sensor's</b> gain: a property of the chip, not of the place</li>
+        <li>rejected if $s \notin [0.67,\ 1.5]$: <i>"bad radius"</i></li>
+        <li>position from GPS or from an EKF origin set by a companion</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Is GPS needed?</h3>
+      <table>
+        <tr><th></th><th>with position</th><th>without</th></tr>
+        <tr><td>ellipsoid fit</td><td class="green">✓</td><td class="green">✓ same</td></tr>
+        <tr><td><code>COMPASS_SCALE</code></td><td>$F/r$</td><td class="red">0 (unused)</td></tr>
+        <tr><td>EKF uses the WMM field</td><td class="green">yes</td><td class="red">no</td></tr>
+        <tr><td><code>EK3_MAG_EF_LIM</code></td><td class="green">active</td><td class="red">no effect</td></tr>
+      </table>
+      <p style="font-size:0.75em">Without a position the calibration still "succeeds" and overwrites a good scale with 0. <code>COMPASS_OPTIONS</code> = 1 makes a GPS fix mandatory.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 4</div>
+  <h1>Orientation relative to the IMU</h1>
+</section>
+
+<section>
+  <h2>Who sets the rotation?</h2>
+  <svg viewBox="0 0 1180 300" style="width:100%" font-family="Inter, Arial" font-size="19">
+    <defs><marker id="pb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9aa1ae"/></marker></defs>
+    <g fill="none" stroke-width="1.5">
+      <rect x="10" y="110" width="200" height="70" rx="10" stroke="#3a3f4b"/>
+      <rect x="300" y="110" width="220" height="70" rx="10" stroke="#3a3f4b"/>
+      <rect x="640" y="20" width="300" height="80" rx="10" stroke="#5ab0ff"/>
+      <rect x="640" y="190" width="300" height="80" rx="10" stroke="#b28dff"/>
+      <rect x="1020" y="110" width="150" height="70" rx="10" stroke="#f2b134"/>
+    </g>
+    <g stroke="#9aa1ae" stroke-width="1.5" fill="none" marker-end="url(#pb)">
+      <line x1="210" y1="145" x2="296" y2="145"/>
+      <path d="M520 145 H580 V60 H636"/><path d="M520 145 H580 V230 H636"/>
+      <path d="M940 60 H980 V145 H1016"/><path d="M940 230 H980 V145 H1016"/>
+    </g>
+    <g fill="#e7e9ee" text-anchor="middle">
+      <text x="110" y="142">sensor chip</text><text x="110" y="166" font-size="15" fill="#9aa1ae">its own axes</text>
+      <text x="410" y="142">board / module</text><text x="410" y="166" font-size="15" fill="#9aa1ae">hwdef: ROTATION_…</text>
+      <text x="790" y="52" fill="#5ab0ff">internal: AHRS_ORIENTATION</text><text x="790" y="78" font-size="15" fill="#9aa1ae">same rotation as the IMU</text>
+      <text x="790" y="222" fill="#b28dff">external: COMPASS_ORIENT</text><text x="790" y="248" font-size="15" fill="#9aa1ae">user, or detected in calibration</text>
+      <text x="1095" y="142" fill="#f2b134">body</text><text x="1095" y="166" font-size="15" fill="#9aa1ae">= IMU frame</text>
+    </g>
+    <g fill="#9aa1ae" font-size="15" text-anchor="middle">
+      <text x="253" y="132">board maker</text>
+    </g>
+  </svg>
+  <ul style="font-size:0.8em">
+    <li>an <b>internal</b> compass is rotated together with the IMU — it stays aligned automatically</li>
+    <li>an <b>external</b> compass (GPS mast) has its own <code>COMPASS_ORIENT</code>: one of ~40 standard rotations, or a custom one</li>
+    <li>the list holds fixed rotations only (mostly multiples of 45°/90°): a tilt of a few degrees cannot be expressed</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Detecting a wrong orientation</h2>
+  <div class="cols c-2-1">
+    <div><div data-widget="orientcheck" data-config='{"width":440,"height":380}'></div></div>
+    <div style="font-size:0.8em">
+      <p>Each sample is stored with the <b>IMU attitude</b> $R_i$. For a candidate rotation $C$:</p>
+      <p>$$\hat e_i = R_i\, C\, m_i$$</p>
+      <p>Right $C$: every $\hat e_i$ equals the Earth field $e$ — a tight cluster. Wrong $C$: a smear.</p>
+      <p>Pick the smallest variance; accept if the runner-up's is &gt; 2× larger. <code>COMPASS_AUTO_ROT</code> = 2 fixes external compasses.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>A small tilt is invisible to calibration</h2>
+  <div class="cols">
+    <div>
+      <p>Tilt the sensor by a small rotation $P$. Seen from the centre $c$ of the cloud, every sample is rotated:</p>
+      <p>$$m_i' - c' = P\,(m_i - c)$$</p>
+      <ul style="font-size:0.85em">
+        <li>fitness, radius, scale, pass/fail: <b>unchanged</b></li>
+        <li>$M' = P M P^\top$: still symmetric, fits as well</li>
+        <li>offsets change by only $\approx \delta\,\|h\|$ (2°, 150 mG: 5 mG)</li>
+        <li>the corrected output is still rotated by $P$</li>
+      </ul>
+    </div>
+    <div>
+      <p>Heading error of a level vehicle, tilt $\delta$ about the roll axis:</p>
+      <p>$$\Delta\psi \approx \delta \tan I \cos\psi$$</p>
+      <table>
+        <tr><th></th><th>$\tan I$</th><th>2° tilt → peak error</th></tr>
+        <tr><td>Tallinn</td><td>3.31</td><td>6.6°</td></tr>
+        <tr><td>Toruń</td><td>2.53</td><td>5.1°</td></tr>
+        <tr><td>Warsaw</td><td>2.48</td><td>5.0°</td></tr>
+        <tr><td>Kyiv</td><td>2.41</td><td>4.8°</td></tr>
+        <tr><td>Opole</td><td>2.33</td><td>4.7°</td></tr>
+      </table>
+      <p style="font-size:0.7em" class="dim">Fix: mount it level, or <code>CUST_ROT1_ROLL/PITCH/YAW</code> + <code>COMPASS_ORIENT</code> = 101, then recalibrate.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Leftover errors → heading error</h2>
+  <div style="font-size:1.1em"><div data-widget="headingerr" data-config='{"city":"Warsaw","tilt":2}'></div></div>
+  <div class="cols c-3" style="font-size:0.7em; margin-top:0.5em">
+    <div><b>hard iron</b>: one cycle per turn, $\le \arcsin(e/H)$</div>
+    <div><b>soft iron</b>: two cycles per turn</div>
+    <div><b>tilt</b>: one cycle, $\times \tan I$; <b>declination</b>: constant</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 5</div>
+  <h1>After calibration</h1>
+</section>
+
+<section>
+  <h2>Calibrated in Opole, flying in Tallinn</h2>
+  <div class="cols">
+    <div>
+      <p><b>No recalibration</b> because of the place: $o$, $M$, $s$ describe the vehicle and the sensor.</p>
+      <p style="font-size:0.85em">Updated at run time from the position:</p>
+      <ul style="font-size:0.8em">
+        <li>declination: at the first position after every boot</li>
+        <li>expected Earth field (WMM): in the EKF, at 1 Hz</li>
+        <li>field strength and inclination: learned in flight</li>
+      </ul>
+      <p style="font-size:0.85em">Recalibrate after hardware changes, transport near magnets, a crash, or failed checks (<code>ARMING_MAGTHRESH</code>).</p>
+    </div>
+    <div>
+      <p style="font-size:0.85em">But the same leftover error costs more where $H$ is small:</p>
+      <table>
+        <tr><th></th><th>$H$ (mG)</th><th>$D$</th><th>20 mG leftover → error</th></tr>
+        <tr><td>Tallinn</td><td>151</td><td>+9.6°</td><td>7.6°</td></tr>
+        <tr><td>Toruń</td><td>185</td><td>+6.3°</td><td>6.2°</td></tr>
+        <tr><td>Warsaw</td><td>188</td><td>+6.8°</td><td>6.1°</td></tr>
+        <tr><td>Kyiv</td><td>195</td><td>+8.3°</td><td>5.9°</td></tr>
+        <tr><td>Opole</td><td>196</td><td>+5.7°</td><td>5.8°</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Declination</h2>
+  <div class="cols">
+    <div>
+      <p>$$\psi_{\text{true}} = \psi_{\text{mag}} + D$$</p>
+      <ul style="font-size:0.85em">
+        <li><code>COMPASS_AUTODEC</code> = 1: $D$ is looked up in the built-in table at the <b>first position after each boot</b>; set, not saved</li>
+        <li>EKF3 with a valid <code>COMPASS_SCALE</code>: table value at the current position, 1 Hz</li>
+        <li>no position at all: the stored <code>COMPASS_DEC</code> — often 0</li>
+      </ul>
+    </div>
+    <div>
+      <div class="box key">
+        <h3>GPS-denied flight</h3>
+        <p style="font-size:0.8em">A declination error $\Delta D$ rotates every heading: navigating by heading drifts sideways by $\sin \Delta D$ of the distance. Tallinn without declination: $\sin 9.6° \approx 17\,\%$.</p>
+        <p style="font-size:0.8em">Set the EKF origin (<code>SET_GPS_GLOBAL_ORIGIN</code>) before take-off, or save <code>COMPASS_DEC</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 6</div>
+  <h1>The compass inside the EKF</h1>
+</section>
+
+<section>
+  <h2>Two ways to use the compass</h2>
+  <div class="cols">
+    <div class="box">
+      <h3>Heading fusion</h3>
+      <p style="font-size:0.85em">Tilt-compensate the reading and fuse <b>one angle</b>:</p>
+      <p>$$\psi_{meas} = \operatorname{atan2}(-m_{\ell,y},\, m_{\ell,x}) + D$$</p>
+      <ul style="font-size:0.75em">
+        <li>no magnetic states; nothing is learned</li>
+        <li>a leftover offset goes straight into the heading</li>
+        <li>only the angle is checked: a wrong field strength or inclination passes unnoticed</li>
+        <li>robust when the surroundings change (near steel, on the ground)</li>
+      </ul>
+    </div>
+    <div class="box key">
+      <h3>3-axis fusion</h3>
+      <p style="font-size:0.85em">Fuse <b>all three components</b>; six extra states, Earth field $B$ (NED) and body bias $d$:</p>
+      <p>$$m = R(q)^\top B + d$$</p>
+      <ul style="font-size:0.75em">
+        <li>learns leftover offsets and the local field in flight</li>
+        <li>all three components are checked: inconsistent readings are rejected</li>
+        <li>needs attitude changes to separate $B$ from $d$</li>
+        <li>learns a disturbance (steel, ground) as "truth"</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>One 3-axis update</h2>
+  <div class="cols">
+    <div style="font-size:0.78em">
+      <ol>
+        <li>predict $\hat m = R(q)^\top B + d$; innovation $\nu = \hat m - m$</li>
+        <li>noise $R = \sigma_m^2 + (0.005\,\omega)^2$, $\;\sigma_m$ = <code>EK3_MAG_M_NSE</code> = 50 mG; grows with the turn rate $\omega$ (timing errors)</li>
+        <li>innovation variance $S = H P H^\top + R$</li>
+        <li>gate: $\nu^2 / (g^2 S) &lt; 1$, $\;g$ = <code>EK3_MAG_I_GATE</code>/100 = 3; <b>any</b> axis fails → the whole sample is rejected</li>
+        <li>fuse $x$, then $y$, then $z$ (scalar updates)</li>
+        <li>clamp $B$ to WMM ± <code>EK3_MAG_EF_LIM</code> (50 mG)</li>
+      </ol>
+      <p>$$H = \Big[\tfrac{\partial (R^\top B)}{\partial q}\ \Big|\ 0\ \Big|\ R^\top\ \Big|\ I_3\Big]$$</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 520 330" style="width:100%" font-family="Inter, Arial" font-size="16">
+        <text x="0" y="20" fill="#e7e9ee" font-weight="600">24 states — which ones a magnetometer update moves</text>
+        <g stroke-width="1.5">
+          <rect x="0" y="40" width="250" height="42" rx="8" fill="#f2b134" fill-opacity="0.18" stroke="#f2b134"/>
+          <rect x="0" y="92" width="250" height="42" rx="8" fill="#f2b134" fill-opacity="0.18" stroke="#f2b134"/>
+          <rect x="0" y="144" width="250" height="42" rx="8" fill="#f2b134" fill-opacity="0.18" stroke="#f2b134"/>
+          <rect x="0" y="196" width="250" height="42" rx="8" fill="#f2b134" fill-opacity="0.18" stroke="#f2b134"/>
+          <rect x="270" y="40" width="250" height="42" rx="8" fill="#b28dff" fill-opacity="0.18" stroke="#b28dff"/>
+          <rect x="270" y="92" width="250" height="42" rx="8" fill="#b28dff" fill-opacity="0.18" stroke="#b28dff"/>
+          <rect x="270" y="144" width="250" height="42" rx="8" fill="none" stroke="#3a3f4b"/>
+          <rect x="270" y="196" width="250" height="42" rx="8" fill="none" stroke="#3a3f4b"/>
+        </g>
+        <g fill="#e7e9ee" text-anchor="middle">
+          <text x="125" y="67">attitude q (0–3)</text>
+          <text x="125" y="119">velocity (4–6), position (7–9)</text>
+          <text x="125" y="171">gyro bias (10–12)</text>
+          <text x="125" y="223">accel bias (13–15)</text>
+          <text x="395" y="67">Earth field B (16–18)</text>
+          <text x="395" y="119">body bias d (19–21)</text>
+          <text x="395" y="171" fill="#9aa1ae">wind (22–23), planes</text>
+          <text x="395" y="223" fill="#9aa1ae"></text>
+        </g>
+        <g font-size="14" fill="#9aa1ae">
+          <text x="0" y="268">yellow: always corrected (through correlations)</text>
+          <text x="0" y="290">purple: only when 3-axis learning is on</text>
+          <text x="0" y="312">roll and pitch move too — not only yaw</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Why 3-axis fusion needs motion</h2>
+  <div style="font-size:1.05em"><div data-widget="magekf" data-config='{"width":740,"motion":"turns"}'></div></div>
+</section>
+
+<section>
+  <h2>A Copter flight (<code>EK3_MAG_CAL</code> = 3)</h2>
+  <svg viewBox="0 0 1180 250" style="width:100%" font-family="Inter, Arial" font-size="21">
+    <defs><marker id="pc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9aa1ae"/></marker></defs>
+    <line x1="10" y1="150" x2="1165" y2="150" stroke="#9aa1ae" stroke-width="1.5" marker-end="url(#pc)"/>
+    <g stroke-width="1.5">
+      <rect x="10" y="40" width="260" height="90" rx="10" fill="none" stroke="#5ab0ff"/>
+      <rect x="290" y="40" width="270" height="90" rx="10" fill="none" stroke="#5ab0ff"/>
+      <rect x="580" y="40" width="330" height="90" rx="10" fill="#f2b134" fill-opacity="0.15" stroke="#f2b134"/>
+      <rect x="930" y="40" width="235" height="90" rx="10" fill="none" stroke="#5ab0ff"/>
+    </g>
+    <g fill="#e7e9ee" text-anchor="middle">
+      <text x="140" y="70" fill="#5ab0ff">on the ground</text><text x="140" y="98" font-size="16.5">heading fusion</text><text x="140" y="120" font-size="16.5" fill="#9aa1ae">magnetic states inhibited</text>
+      <text x="425" y="70" fill="#5ab0ff">climb-out</text><text x="425" y="98" font-size="16.5">heading fusion</text><text x="425" y="120" font-size="16.5" fill="#9aa1ae">≤ 2 anomaly resets</text>
+      <text x="745" y="70" fill="#f2b134">flying</text><text x="745" y="98" font-size="16.5">3-axis fusion: learns B and d</text><text x="745" y="120" font-size="16.5" fill="#9aa1ae">learned when σ_B &lt; 10 mG</text>
+      <text x="1047" y="70" fill="#5ab0ff">landed</text><text x="1047" y="98" font-size="16.5">heading fusion</text><text x="1047" y="120" font-size="16.5" fill="#9aa1ae">learned variances kept</text>
+    </g>
+    <g fill="#9aa1ae" font-size="17" text-anchor="middle">
+      <text x="280" y="180">take-off</text>
+      <text x="570" y="180" fill="#f2b134">2.5 m above take-off:</text><text x="570" y="200" fill="#f2b134">final yaw + field reset</text>
+      <text x="920" y="180">landing</text>
+    </g>
+    <g stroke="#9aa1ae" stroke-width="1.5"><line x1="280" y1="142" x2="280" y2="158"/><line x1="570" y1="142" x2="570" y2="158"/><line x1="920" y1="142" x2="920" y2="158"/></g>
+  </svg>
+  <ul style="font-size:0.75em">
+    <li>the ground is magnetically dirty (rebar, cars, the launch box): learning waits until the vehicle is clear of it</li>
+    <li>climbing with a growing yaw innovation and little rotation → an interim reset ("climbing out of an anomaly")</li>
+    <li>planes (<code>EK3_MAG_CAL</code> = 0) use a GPS-velocity yaw reset instead</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Health, failsafe, logs</h2>
+  <div class="cols">
+    <div style="font-size:0.78em">
+      <ul>
+        <li><b>healthy</b> sample: all three test ratios &lt; 1</li>
+        <li><b>Copter EKF failsafe</b> (<code>FS_EKF_THRESH</code> = 0.8): two of {compass, velocity, position} above the threshold. With heading fusion only the angle is tested — a weaker failsafe.</li>
+        <li><b>switching compass</b>: rejected for 10 s, in flight, &gt; 30 s after start, more than one compass</li>
+        <li><b>planes with GPS</b>: last compass times out → compasses failed for this flight; yaw from GPS / GSF</li>
+      </ul>
+    </div>
+    <div>
+      <table>
+        <tr><th>log field</th><th>meaning</th><th>expect</th></tr>
+        <tr><td><code>XKF2.MN/ME/MD</code></td><td>learned $B$ (mG)</td><td>Warsaw ≈ (187, 22, 468)</td></tr>
+        <tr><td><code>XKF2.MX/MY/MZ</code></td><td>learned $d$ (mG)</td><td>small, steady</td></tr>
+        <tr><td><code>XKF3.IMX/IMY/IMZ</code></td><td>innovations</td><td>around 0, no throttle pattern</td></tr>
+        <tr><td><code>XKF3.IYAW</code></td><td>yaw innovation</td><td>around 0</td></tr>
+        <tr><td><code>XKF4.SM</code></td><td>√ largest test ratio</td><td>&lt; 1</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Choosing <code>EK3_MAG_CAL</code></h2>
+  <table style="font-size:0.75em">
+    <tr><th>value</th><th>behaviour</th><th>use for</th></tr>
+    <tr><td>0</td><td>heading on ground, 3-axis in flight</td><td>planes, VTOL in forward flight (Plane default)</td></tr>
+    <tr><td>1</td><td>3-axis only when manoeuvring (horizontal accel. &gt; 0.5 m/s²)</td><td>rarely used</td></tr>
+    <tr><td>2</td><td>heading fusion always</td><td>rovers; flying next to large steel structures (Rover default)</td></tr>
+    <tr><td>3</td><td>3-axis after the in-flight reset at 2.5 m</td><td>multicopters (Copter default)</td></tr>
+    <tr><td>4</td><td>3-axis always, also on the ground</td><td>bench / SITL tests of the learning</td></tr>
+  </table>
+  <div class="takeaway" style="font-size:0.85em">3-axis fusion is only as good as the environment and the WMM anchor: keep <code>COMPASS_SCALE</code> valid (calibrate with a position) so that <code>EK3_MAG_EF_LIM</code> works.</div>
+</section>
+
+<section>
+  <h2>Summary</h2>
+  <table style="font-size:0.66em">
+    <tr><th>question</th><th>answer</th></tr>
+    <tr><td>what is calibrated</td><td>offsets (hard iron), symmetric matrix (soft iron, gains), scale — an ellipsoid → sphere</td></tr>
+    <tr><td>uses the local field?</td><td>only for the scale: $F_{\text{WMM}} / r$; the fit works with any field</td></tr>
+    <tr><td>GPS needed?</td><td>not for the fit; without a position <code>COMPASS_SCALE</code> = 0 and the EKF ignores the WMM</td></tr>
+    <tr><td>new place?</td><td>no recalibration; declination and the expected field follow the position</td></tr>
+    <tr><td>coarse orientation</td><td>hwdef, <code>AHRS_ORIENTATION</code>, <code>COMPASS_ORIENT</code>; checked against the IMU during calibration</td></tr>
+    <tr><td>small tilt</td><td>not detected; up to $\delta \tan I$ of heading error (×2.3–3.3 here)</td></tr>
+    <tr><td>declination</td><td>table lookup at the first position after boot; added to the magnetic heading</td></tr>
+    <tr><td>3-axis fusion</td><td>EKF fuses the full vector and learns Earth field + body bias in flight</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Sources</h2>
+  <ul style="font-size:0.7em">
+    <li>ArduPilot source: <code>libraries/AP_Compass/CompassCalibrator.cpp</code>, <code>AP_Compass_Calibration.cpp</code>, <code>AP_Compass_Backend.cpp</code>, <code>AP_Declination/</code>, <code>AP_NavEKF3/AP_NavEKF3_MagFusion.cpp</code>, <code>AP_Arming/AP_Arming.cpp</code></li>
+    <li><a href="https://ardupilot.org/copter/docs/common-compass-calibration-in-mission-planner.html">ArduPilot wiki: compass calibration</a></li>
+    <li><a href="https://ardupilot.org/copter/docs/common-compass-setup-advanced.html">ArduPilot wiki: advanced compass setup</a></li>
+    <li><a href="https://github.com/ArduPilot/ardupilot/pull/12899">PR #12899: compass scale factor</a> · <a href="https://github.com/ArduPilot/ardupilot/pull/12377">PR #12377: EKF WMM constraint</a></li>
+  </ul>
+</section>
+
+</div></div>
+<script type="module" src="../../shared/deck.js"></script>
+</body>
+</html>

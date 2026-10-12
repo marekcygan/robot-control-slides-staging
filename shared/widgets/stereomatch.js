@@ -16,11 +16,14 @@
 //   win: 9            window size (odd, slider 3 … 31)
 //   click: [186, 168] preset pixel in the left image (null: none)
 //   lrcheck: false    left–right consistency check
+//   mode: "flip"      only the two views, switched with buttons or blinking (vertical guide lines show the shift);
+//                     print shows them side by side
 // }
-import { C, h, fmt } from './util.js';
+import { C, h, fmt, isPrint } from './util.js';
 import { LIGHT } from '../theme.js';
 
 const IW = 320, IH = 240;
+const WALL_Z = 20, WS = WALL_Z / 8;   // back wall depth; texture scale relative to the original z = 8
 
 // ---------------- procedural textures (object space, so both views agree) ----------------
 function hash3(i, j, k) {
@@ -49,7 +52,9 @@ const MAT = {
     const k = 0.45 + 0.7 * n + (d > 0.93 ? 0.35 : 0);
     return [0.36 * k, 0.40 * k, 0.30 * k];
   },
-  wall: p => {
+  wall: p0 => {
+    // texture designed for a wall at z = 8, scaled with the distance so it looks the same in the image
+    const p = [p0[0] / WS, p0[1] / WS];
     // uniform board: no texture at all
     if (p[0] > -3.4 && p[0] < -0.9 && p[1] > -2.3 && p[1] < -0.5) return [0.86, 0.86, 0.83];
     const row = Math.floor(p[1] / 0.25), off = row & 1 ? 0.25 : 0;
@@ -75,9 +80,10 @@ const MAT = {
 
 // ---------------- scene and ray casting ----------------
 // axis-aligned rectangles: { axis, at, lo:[..], hi:[..] } — plane coordinate[axis] = at, bounds on the other two
+// The back wall is far (z = 20) so that it barely moves between the views, while the sphere and the box jump.
 const RECTS = [
-  { axis: 1, at: 1.0, lo: [-8, 0, 0.5], hi: [8, 0, 8], n: [0, -1, 0], mat: 'ground' },
-  { axis: 2, at: 8.0, lo: [-8, -6, 0], hi: [8, 1, 0], n: [0, 0, -1], mat: 'wall' },
+  { axis: 1, at: 1.0, lo: [-8 * WS, 0, 0.5], hi: [8 * WS, 0, WALL_Z], n: [0, -1, 0], mat: 'ground' },
+  { axis: 2, at: WALL_Z, lo: [-8 * WS, -6 * WS, 0], hi: [8 * WS, 1, 0], n: [0, 0, -1], mat: 'wall' },
   { axis: 2, at: 5.0, lo: [0.9, -0.3, 0], hi: [2.4, 1, 0], n: [0, 0, -1], mat: 'stripes' },
 ];
 const BOX = { lo: [-1.7, 0.2, 3.0], hi: [-0.8, 1.0, 3.7], mat: 'box' };
@@ -195,6 +201,7 @@ function turbo(t) {
 
 // ---------------------------------------------------------------------------------------------
 export function mount(el, cfg) {
+  if (cfg.mode === 'flip') return mountFlip(el, cfg);
   const TW = cfg.width || 300, TH = TW * IH / IW;
   const b = cfg.b ?? 0.2, f = cfg.f ?? 300, maxD = cfg.maxD ?? 40;
   const state = { win: cfg.win ?? 9, click: cfg.click === undefined ? [186, 168] : cfg.click, lr: !!cfg.lrcheck };
@@ -328,4 +335,52 @@ export function mount(el, cfg) {
       plot, stats, bar,
       h('div', { class: 'dim interactive-only' }, 'Click the left image.'))));
   compute(); colorbar(); draw();
+}
+
+// The two views of the stereo pair, one at a time: near objects jump, far ones barely move.
+function mountFlip(el, cfg) {
+  const TW = cfg.width || 560, TH = TW * IH / IW;
+  const b = cfg.b ?? 0.2, f = cfg.f ?? 300;
+  const views = [render(0, f), render(b, f)].map(v => {
+    const c = document.createElement('canvas'); c.width = IW; c.height = IH;
+    c.getContext('2d').putImageData(new ImageData(v.rgba, IW, IH), 0, 0);
+    return c;
+  });
+  const names = ['left camera', 'right camera'];
+  const state = { view: 0, guides: true, blink: null };
+
+  const draw = (canvas, k) => {
+    const g = canvas.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.drawImage(views[k], 0, 0, canvas.width, canvas.height);
+    const s = canvas.width / IW;
+    if (state.guides) {
+      g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1;
+      for (let x = 40; x < IW; x += 40) { g.beginPath(); g.moveTo(x * s + 0.5, 0); g.lineTo(x * s + 0.5, canvas.height); g.stroke(); }
+    }
+    g.font = `${Math.round(13 * s)}px Inter, Arial`;
+    const tw = g.measureText(names[k]).width;
+    g.fillStyle = 'rgba(13,15,19,0.75)'; g.fillRect(6 * s, 6 * s, tw + 10 * s, 20 * s);
+    g.fillStyle = k ? C.blue : C.accent; g.fillText(names[k], 11 * s, 21 * s);
+  };
+
+  el.classList.add('widget');
+  if (isPrint()) {
+    const w = Math.round(TW * 0.62);
+    const cs = [0, 1].map(k => { const c = h('canvas', { width: IW * 2, height: IH * 2, style: `width:${w}px; height:${w * IH / IW}px` }); draw(c, k); return c; });
+    el.append(h('div', { style: 'display:flex; gap:0.6em' }, ...cs));
+    return;
+  }
+  const canvas = h('canvas', { width: IW * 2, height: IH * 2, style: `width:${TW}px; height:${TH}px` });
+  const btn = names.map((n, k) => h('button', { onclick: () => { stopBlink(); show(k); } }, n));
+  const blinkBtn = h('button', { onclick: () => (state.blink ? stopBlink() : startBlink()) }, 'blink');
+  const guideBtn = h('button', { class: 'active', onclick: () => { state.guides = !state.guides; guideBtn.classList.toggle('active', state.guides); show(state.view); } }, 'guide lines');
+  function show(k) { state.view = k; draw(canvas, k); btn.forEach((x, i) => x.classList.toggle('active', i === k)); }
+  function startBlink() {
+    blinkBtn.classList.add('active');
+    state.blink = setInterval(() => { if (!el.isConnected) return stopBlink(); show(1 - state.view); }, cfg.period ?? 600);
+  }
+  function stopBlink() { clearInterval(state.blink); state.blink = null; blinkBtn.classList.remove('active'); }
+  el.append(canvas, h('div', { class: 'wctl interactive-only', style: 'gap:0.3em' }, ...btn, blinkBtn, guideBtn));
+  show(0);
 }

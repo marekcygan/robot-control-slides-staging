@@ -157,6 +157,8 @@ export function mount(el, cfg) {
     { const q = toC([p[0] + 0.42 * gg[0] / ng, p[1] + 0.42 * gg[1] / ng]); arrow(g, u, v, q[0], q[1], C.blue, 4); }
     g.fillStyle = C.fg; g.strokeStyle = C.bg; g.lineWidth = 2;
     g.beginPath(); g.arc(u, v, 9, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = C.fg; g.font = 'italic bold 22px "Times New Roman", serif';
+    g.fillText('p', u + (p[0] >= 0 ? 12 : -24), v + (p[1] >= 0 ? 22 : -10));
 
     // readout
     const fname = mode === 'x2y' ? 'f' : 'L';
@@ -168,9 +170,9 @@ export function mount(el, cfg) {
     const parallel = ang === null || ang < 1 || ang > 179;
     const Mtex = `M = \\begin{bmatrix}${fmt(M[0])} & ${fmt(M[1])}\\\\ ${fmt(M[2])} & ${fmt(M[3])}\\end{bmatrix}`;
     readout.innerHTML =
-      (mode === 'quadform' ? `<div>$${Mtex}$</div>` : `<div>$f(x, y) = x^2 y$</div>`) +
+      (mode === 'quadform' ? `<div>$${Mtex}$</div>` : '') +
       `<div>$p = (${fmt(p[0])},\\ ${fmt(p[1])})$</div>` +
-      `<div>$${fname}(p) = ${fmt(fp, 3)}$</div>` +
+      `<div>contour: $\\textcolor{${C.purple}}{${fname} = ${fname}(p) = ${fmt(fp, mode === 'x2y' ? 3 : 2)}}$</div>` +
       `<div>angle$(\\textcolor{${C.accent}}{\\nabla ${fname}},\\ \\textcolor{${C.blue}}{\\nabla g}) = ${ang === null ? '—' : fmt(ang, 0) + '^\\circ'}$</div>`;
     window.renderMathInElement?.(readout, { delimiters: [{ left: '$', right: '$', display: false }], throwOnError: false });
 
@@ -223,14 +225,23 @@ export function mount(el, cfg) {
     mode === 'x2y' ? 'all candidates' : 'eigenvectors');
   candBtn.classList.toggle('active', state.cand);
 
+  // legend: what is dragged and what the curves are
+  const sw = svg => `<svg width="30" height="14" style="flex:none; vertical-align:middle">${svg}</svg>`;
+  const legend = h('div', { style: 'font-size:0.82em; line-height:1.3; display:flex; flex-direction:column; gap:0.2em' });
+  legend.innerHTML = [
+    [sw(`<circle cx="15" cy="7" r="6" fill="${C.fg}"/>`), 'point $p$ on the circle $g = 0$<span class="interactive-only">: <b>drag it</b></span>'],
+    [sw(`<line x1="1" y1="7" x2="29" y2="7" stroke="${C.purple}" stroke-width="3" stroke-dasharray="7 4"/>`), `the contour line of $${mode === 'x2y' ? 'f' : 'L'}$ through $p$`],
+    [sw(`<line x1="1" y1="7" x2="29" y2="7" stroke="#5a606c" stroke-width="2"/>`), `other contour lines of $${mode === 'x2y' ? 'f' : 'L'}$`],
+  ].map(([s, t]) => `<div style="display:flex; gap:0.4em; align-items:center">${s}<span>${t}</span></div>`).join('');
+  window.renderMathInElement?.(legend, { delimiters: [{ left: '$', right: '$', display: false }], throwOnError: false });
+
   el.classList.add('widget');
   el.append(h('div', { style: 'display:flex; gap:0.8em; align-items:flex-start' },
     canvas,
     h('div', { style: 'display:flex; flex-direction:column; gap:0.5em; width:15em; flex:none' },
-      readout, note,
+      legend, readout, note,
       h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start; gap:0.35em' },
-        h('div', { class: 'dim' }, 'drag the point along the circle'),
-        h('div', { style: 'display:flex; align-items:center; gap:0.4em' }, h('label', {}, 'angle'), slider),
+                h('div', { style: 'display:flex; align-items:center; gap:0.4em' }, h('label', {}, 'angle'), slider),
         h('div', { style: 'display:flex; gap:0.3em; flex-wrap:wrap' }, findBtn, candBtn)))));
   draw();
 }

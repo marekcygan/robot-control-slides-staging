@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lecture 2: Calibration, PnP, RANSAC & Stereo</title>
+  <link rel="stylesheet" href="../../vendor/reveal/reset.css">
+  <link rel="stylesheet" href="../../vendor/reveal/reveal.css">
+  <link rel="stylesheet" href="../../vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../shared/deck.css">
+  <script src="../../vendor/katex/katex.min.js"></script>
+  <script src="../../vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="importmap">{ "imports": { "three": "../../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- ============================================================ -->
+<section class="title-slide">
+  <h1>Lecture 2<br>Camera calibration, PnP, RANSAC &amp; stereo</h1>
+  <p class="subtitle">Robot Control · University of Warsaw</p>
+</section>
+
+<section>
+  <h2>Last time: the pinhole camera</h2>
+  <div class="cols" style="grid-template-columns: auto 1fr; gap:1.4em">
+    <div>
+      <div style="font-size:0.9em"><div data-widget="pinhole3d" data-config='{"width":480,"height":330}'></div></div>
+      <p style="font-size:0.8em; margin-top:0.4em">Similar triangles: $\;\dfrac{x_i}{f} = \dfrac{x_c}{z_c}, \quad \dfrac{y_i}{f} = \dfrac{y_c}{z_c}$</p>
+    </div>
+    <div style="font-size:0.8em">
+      <svg viewBox="0 0 470 260" style="width:100%; max-width:470px; display:block">
+        <defs><marker id="ahk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+        <rect x="40" y="30" width="320" height="200" fill="#1e2128" stroke="#9aa1ae" stroke-width="2"/>
+        <text x="44" y="250" fill="#9aa1ae" font-size="18">image (pixels)</text>
+        <!-- pixel frame -->
+        <line x1="40" y1="30" x2="110" y2="30" stroke="#e7e9ee" stroke-width="2.5" marker-end="url(#ahk)"/>
+        <line x1="40" y1="30" x2="40" y2="100" stroke="#e7e9ee" stroke-width="2.5" marker-end="url(#ahk)"/>
+        <text x="114" y="26" fill="#e7e9ee" font-size="22" font-style="italic">u</text>
+        <text x="24" y="104" fill="#e7e9ee" font-size="22" font-style="italic">v</text>
+        <text x="2" y="24" fill="#9aa1ae" font-size="16">(0, 0)</text>
+        <!-- principal point: offsets from the corner -->
+        <line x1="40" y1="134" x2="196" y2="134" stroke="#b28dff" stroke-dasharray="4 4"/>
+        <line x1="200" y1="30" x2="200" y2="130" stroke="#b28dff" stroke-dasharray="4 4"/>
+        <text x="104" y="150" fill="#b28dff" font-size="20" font-style="italic">o<tspan baseline-shift="sub" font-size="15">x</tspan></text>
+        <text x="206" y="86" fill="#b28dff" font-size="20" font-style="italic">o<tspan baseline-shift="sub" font-size="15">y</tspan></text>
+        <line x1="192" y1="134" x2="208" y2="134" stroke="#b28dff" stroke-width="2.5"/>
+        <line x1="200" y1="126" x2="200" y2="142" stroke="#b28dff" stroke-width="2.5"/>
+        <text x="120" y="178" fill="#b28dff" font-size="16">principal point</text>
+        <text x="70" y="198" fill="#9aa1ae" font-size="15">(the optical axis hits the image)</text>
+        <!-- projected point -->
+        <line x1="200" y1="134" x2="296" y2="134" stroke="#f2b134" stroke-width="2" marker-end="url(#ahk)"/>
+        <line x1="300" y1="134" x2="300" y2="74" stroke="#f2b134" stroke-width="2" marker-end="url(#ahk)"/>
+        <text x="222" y="125" fill="#f2b134" font-size="19" font-style="italic">f<tspan baseline-shift="sub" font-size="14">x</tspan> x<tspan baseline-shift="sub" font-size="14">c</tspan> / z<tspan baseline-shift="sub" font-size="14">c</tspan></text>
+        <text x="308" y="112" fill="#f2b134" font-size="19" font-style="italic">f<tspan baseline-shift="sub" font-size="14">y</tspan> y<tspan baseline-shift="sub" font-size="14">c</tspan> / z<tspan baseline-shift="sub" font-size="14">c</tspan></text>
+        <circle cx="300" cy="70" r="7" fill="#f2b134"/>
+        <text x="312" y="62" fill="#f2b134" font-size="20" font-style="italic">(u, v)</text>
+      </svg>
+      <p>$$u = \textcolor{#f2b134}{f_x}\,\frac{x_c}{z_c} + \textcolor{#b28dff}{o_x}, \qquad v = \textcolor{#f2b134}{f_y}\,\frac{y_c}{z_c} + \textcolor{#b28dff}{o_y}$$</p>
+      <p>$$z_c\begin{bmatrix}u\\ v\\ 1\end{bmatrix} =
+          \underbrace{\begin{bmatrix} \textcolor{#f2b134}{f_x} & 0 & \textcolor{#b28dff}{o_x} \\ 0 & \textcolor{#f2b134}{f_y} & \textcolor{#b28dff}{o_y} \\ 0 & 0 & 1 \end{bmatrix}}_{K}
+          \begin{bmatrix}x_c\\ y_c\\ z_c\end{bmatrix}$$</p>
+      <p class="small" style="margin-top:0"><span style="color:#f2b134">$f_x, f_y$</span>: focal length in pixels (zoom) · <span style="color:#b28dff">$o_x, o_y$</span>: principal point (shift)</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Last time → today</h2>
+  <div class="cols">
+    <div>
+      <h3>Lecture 1</h3>
+      <ul>
+        <li>a 3D point <b>in the camera frame</b> → pixel: $\;z_c\,(u, v, 1)^\top = K\,x_c$</li>
+        <li>a pixel → a ray $\;x_c = z_c\,K^{-1}(u, v, 1)^\top$, $z_c > 0$: depth is lost</li>
+        <li>rigid motion $x \mapsto Rx + t$</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Today</h3>
+      <ul>
+        <li>the camera is <b>not</b> at the origin: extrinsics, $P = K[R\,|\,t]$</li>
+        <li>how to find $K$: <b>calibration</b></li>
+        <li>where is a known object: <b>PnP</b></li>
+        <li>wrong measurements: <b>RANSAC</b></li>
+        <li>depth from two cameras: <b>stereo</b></li>
+      </ul>
+    </div>
+  </div>
+  <div class="box" style="margin-top:0.8em; font-size:0.8em">
+    <b>Self-study</b> (not repeated today): lens distortion — lecture 1, part 6. Calibration estimates the distortion coefficients together with $K$.
+  </div>
+  <p class="small" style="margin-top:0.8em; font-size:0.75em">Further reading: Szeliski, <a href="https://szeliski.org/Book/">Computer Vision: Algorithms and Applications</a>, ch. 11–12;
+    Hartley &amp; Zisserman, <i>Multiple View Geometry</i>, ch. 4, 6–7; <a href="https://fpcv.cs.columbia.edu/">First Principles of Computer Vision</a> (S. Nayar).</p>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 1</div>
+  <h1>The full camera model</h1>
+</section>
+
+<section>
+  <h2>The camera is not at the origin</h2>
+  <div class="cols" style="grid-template-columns: auto 1fr">
+    <div style="font-size:0.95em; max-width:560px"><div data-widget="extrinsics3d" data-config='{"width":540,"height":330}'></div></div>
+    <div style="font-size:0.78em">
+      <p>Points are given in a <b>world frame</b> $W$ (a table, a map, the robot base). To project $P$, first move it to the camera frame $C$:</p>
+      <p>$$x_c = \textcolor{#e7e9ee}{R}\,x_w + \textcolor{#f2b134}{t}, \qquad \text{then } K \text{ gives the pixel}$$</p>
+      <ul>
+        <li>$R$: rows are the camera axes $x_c, y_c, z_c$ in world coordinates (arc: dashed world axes → camera axes)</li>
+        <li>$\textcolor{#f2b134}{t}$: the world origin seen from the camera, <b>along the camera axes</b></li>
+        <li>camera centre $\textcolor{#b28dff}{C}$ maps to $0$: $\;t = -R\,C$ — <b>not</b> the camera position</li>
+      </ul>
+      <div class="box key" style="font-size:0.9em">
+        <p style="margin:0">Extrinsics $R, t$ (6 DoF): ${}^{C}T_{W} = \begin{bmatrix} R & t\\ 0^\top & 1\end{bmatrix}$; the camera pose in the world is ${}^{W}T_{C} = \begin{bmatrix} R^\top & C\\ 0^\top & 1\end{bmatrix}$.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Extrinsics to play with</h2>
+  <div style="font-size:1.3em"><div data-widget="camera3d" data-config='{"extrinsics":true,"controls":["move","pose"],"width":520,"height":360,"imageWidth":340,"camera":[-6.5,6,6.5],"target":[0,0.6,1.5]}'></div></div>
+</section>
+
+<section>
+  <h2>The projection matrix $P$</h2>
+  <div style="font-size:0.78em; margin-top:-0.4em">
+  <p>$$\begin{bmatrix}\tilde u\\ \tilde v\\ \tilde w\end{bmatrix} =
+      \underbrace{\begin{bmatrix} f_x & s & o_x \\ 0 & f_y & o_y \\ 0 & 0 & 1 \end{bmatrix}}_{K\ \text{(intrinsics)}}
+      \underbrace{\begin{bmatrix} r_{11} & r_{12} & r_{13} & t_x\\ r_{21} & r_{22} & r_{23} & t_y\\ r_{31} & r_{32} & r_{33} & t_z\end{bmatrix}}_{[R\,|\,t]\ \text{(extrinsics)}}
+      \begin{bmatrix} x_w\\ y_w\\ z_w\\ 1\end{bmatrix} = P\,\tilde x_w, \qquad (u, v) = \Big(\frac{\tilde u}{\tilde w}, \frac{\tilde v}{\tilde w}\Big)$$</p>
+  </div>
+  <div style="font-size:1.05em"><div data-widget="projsteps" data-config='{"width":540,"height":320}'></div></div>
+</section>
+
+<section>
+  <h2>The projection matrix $P$: properties</h2>
+  <ul>
+    <li>$P = K[R\,|\,t]$ is $3\times4$</li>
+    <li>$P$ and $kP$ ($k \ne 0$) give the same pixels: defined <b>up to scale</b></li>
+    <li>$\tilde w = $ depth $z_c$ of the point (when $P$ is normalised so that $\|(p_{31}, p_{32}, p_{33})\| = 1$)</li>
+    <li>the camera centre: $P\begin{bmatrix}C\\1\end{bmatrix} = K(RC + t) = 0$</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Counting degrees of freedom</h2>
+  <div class="cols">
+    <div>
+      <p>$P$: 12 entries, up to scale → <b>11 DoF</b>.</p>
+      <p>$K$ with $f_x, f_y, o_x, o_y$: 4 &nbsp;+&nbsp; $R$: 3 &nbsp;+&nbsp; $t$: 3 &nbsp;=&nbsp; <b>10</b>.</p>
+      <div class="question">Which parameter is missing?</div>
+      <div class="fragment">
+        <p>The <b>skew</b> $s$ in $K = \begin{bmatrix} f_x & s & o_x \\ 0 & f_y & o_y \\ 0 & 0 & 1 \end{bmatrix}$: pixel axes not perpendicular.</p>
+        <p style="font-size:0.85em">Every $P$ whose left $3\times3$ block is invertible splits uniquely into $K[R\,|\,t]$ with this $K$ (positive diagonal): $4 + 1 + 3 + 3 = 11$.</p>
+      </div>
+    </div>
+    <div class="box fragment">
+      <h3>Skew in practice</h3>
+      <p style="font-size:0.85em">$s \ne 0$ means the pixel axes are not perpendicular. Not the case for digital sensors (OpenCV fixes $s = 0$); it appears when an image is warped with a shear, or for film scanned with a slightly slanted scan direction. We keep $s$ so that every $P$ splits into $K[R\,|\,t]$.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 2</div>
+  <h1>Camera calibration</h1>
+</section>
+
+<section>
+  <h2>Calibration: find $K$ (and the pose)</h2>
+  <div class="cols">
+    <div>
+      <h3>Why</h3>
+      <ul>
+        <li>pixel → ray needs $K^{-1}$: every 3D measurement (PnP, stereo, SLAM) needs $K$</li>
+        <li>lens distortion must be estimated as well</li>
+        <li>datasheet values are not precise enough (focus, assembly tolerances)</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Procedure</h3>
+      <ol>
+        <li>take a picture of an object of <b>known geometry</b></li>
+        <li>find <b>correspondences</b>: 3D points $X_i$ ↔ pixels $(u_i, v_i)$</li>
+        <li>each correspondence gives equations on $P$</li>
+        <li>solve for $P$, then split $P$ into $K$, $R$, $t$</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Each correspondence gives two linear equations</h2>
+  <div class="cols" style="grid-template-columns: 1fr 1fr">
+    <div>
+      <p style="font-size:0.9em">Write $p_1^\top, p_2^\top, p_3^\top$ for the rows of $P$ and $\tilde X_i = (x_i, y_i, z_i, 1)$:</p>
+      <p>$$u_i = \frac{p_1^\top \tilde X_i}{p_3^\top \tilde X_i}, \qquad v_i = \frac{p_2^\top \tilde X_i}{p_3^\top \tilde X_i}$$</p>
+      <p style="font-size:0.9em">Multiply out the denominators — the equations become <b>linear</b> in the entries of $P$:</p>
+      <p>$$\begin{aligned} p_1^\top \tilde X_i - u_i\, p_3^\top \tilde X_i &= 0\\ p_2^\top \tilde X_i - v_i\, p_3^\top \tilde X_i &= 0\end{aligned}$$</p>
+    </div>
+    <div>
+      <p style="font-size:0.9em">Stack all $n$ points, unknown $p = (p_{11}, p_{12}, \dots, p_{34}) \in \mathbb{R}^{12}$:</p>
+      <p style="font-size:0.95em">$$\underbrace{\begin{bmatrix}
+        \tilde X_1^\top & 0^\top & -u_1 \tilde X_1^\top\\
+        0^\top & \tilde X_1^\top & -v_1 \tilde X_1^\top\\
+        \vdots & \vdots & \vdots\\
+        \tilde X_n^\top & 0^\top & -u_n \tilde X_n^\top\\
+        0^\top & \tilde X_n^\top & -v_n \tilde X_n^\top
+      \end{bmatrix}}_{A\ (2n\times12)} p = 0$$</p>
+      <p style="font-size:0.9em">11 unknowns, 2 equations per point → at least <b>6 points</b>, not all on one plane.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Fixing the scale</h2>
+  <div class="cols">
+    <div>
+      <p>$Ap = 0$ always has the useless solution $p = 0$, and if $p$ solves it, so does $kp$ — the same camera.</p>
+      <p>With noise there is no exact solution anyway. So we ask for:</p>
+      <div class="box key">
+        $$\min_p \|Ap\|^2 \quad \text{subject to} \quad \|p\|^2 = 1$$
+      </div>
+    </div>
+    <div>
+      <h3>Why not $p_{34} = 1$?</h3>
+      <p style="font-size:0.85em">Another way to fix the scale, and then plain least squares. But $p_{34} = (Kt)_3 = t_z$: if the world origin happens to be close to the camera's $z_c = 0$ plane, $p_{34} \approx 0$ and fixing it to $1$ blows up the other entries. The constraint $\|p\| = 1$ has no such special case.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Constrained least squares</h2>
+  <p>$$\|Ap\|^2 = (Ap)^\top(Ap) = p^\top \underbrace{A^\top A}_{M} \, p \qquad\text{— a quadratic form, } M \text{ symmetric } 12 \times 12$$</p>
+  <p>Lagrangian: &nbsp;$\mathcal{L}(p, \lambda) = p^\top M p - \lambda\,(p^\top p - 1)$. &nbsp;Setting its gradient to zero:</p>
+  <p>$$\nabla_p\, \mathcal{L} = 2Mp - 2\lambda p = 0 \quad\Longrightarrow\quad A^\top A\, p = \lambda\, p$$</p>
+  <p>Every solution is a <b>unit eigenvector</b> of $A^\top A$. Two questions:</p>
+  <ol>
+    <li>where does $\nabla_p (p^\top M p) = 2Mp$ come from?</li>
+    <li>why does the Lagrangian give the optimum, and <b>which</b> eigenvector?</li>
+  </ol>
+</section>
+
+<section>
+  <h2>The derivative of a quadratic form</h2>
+  <div class="cols">
+    <div>
+      <p>$$q(p) = p^\top M p = \sum_{i}\sum_{j} M_{ij}\, p_i\, p_j$$</p>
+      <p>Differentiate with respect to $p_k$: the terms with $i = k$ give $\sum_j M_{kj} p_j$, the terms with $j = k$ give $\sum_i M_{ik} p_i$:</p>
+      <p>$$\frac{\partial q}{\partial p_k} = (Mp)_k + (M^\top p)_k$$</p>
+      <p>$$\nabla q = (M + M^\top)\,p = 2Mp \quad \text{for symmetric } M$$</p>
+    </div>
+    <div class="box">
+      <h3>Sanity check in 1D</h3>
+      <p style="font-size:0.85em">$q(p) = m p^2$, $\;q'(p) = 2mp$.</p>
+      <h3 style="margin-top:0.6em">Also useful</h3>
+      <p style="font-size:0.85em">$\nabla_p (b^\top p) = b$, &nbsp; $\nabla_p \|p\|^2 = 2p$.</p>
+      <p style="font-size:0.85em">So $\nabla_p \|Ap - b\|^2 = 2A^\top(Ap - b)$ — setting it to zero gives the normal equations $A^\top A p = A^\top b$ of ordinary least squares.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The Lagrangian method: intuition</h2>
+  <div class="cols" style="grid-template-columns: auto 1fr">
+    <div style="font-size:1.15em"><div data-widget="lagrange" data-config='{"mode":"x2y","width":420,"height":420}'></div></div>
+    <div style="font-size:0.8em">
+      <div class="box key" style="margin-bottom:0.7em; font-size:0.9em">
+        <h3>Problem</h3>
+        <p style="margin:0">$$\begin{aligned} \text{maximise}\quad & \textcolor{#f2b134}{f(x, y) = x^2 y} \\ \text{subject to}\quad & \textcolor{#5ab0ff}{g(x, y) = x^2 + y^2 - 1 = 0} \end{aligned}$$</p>
+        <p class="small" style="margin:0">the constraint $g = 0$ is the unit circle</p>
+      </div>
+      <p>At the optimum the contour of $f$ <b>touches</b> the circle — if it crossed it, we could move along the circle to a higher contour. Touching = parallel normals:</p>
+      <p>$$\nabla f = \lambda\, \nabla g$$</p>
+      <p>Solutions: $(0, \pm1)$, $(\pm\sqrt{2/3}, \pm 1/\sqrt3)$.</p>
+      <p>Only <b>candidates</b>: evaluate $f$, pick the best.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Which eigenvector?</h2>
+  <div class="cols" style="grid-template-columns: auto 1fr">
+    <div style="font-size:1.15em"><div data-widget="lagrange" data-config='{"mode":"quadform","width":420,"height":420}'></div></div>
+    <div style="font-size:0.8em">
+      <p>Candidates: unit eigenvectors, $A^\top A\,p = \lambda p$.</p>
+      <p>The loss at a candidate:
+        $$\begin{aligned}\|Ap\|^2 &= p^\top A^\top A\, p\\ &= p^\top (\lambda p) = \lambda\end{aligned}$$</p>
+      <p>Pick the eigenvector of the <b>smallest eigenvalue</b> of $A^\top A$.</p>
+      <p class="dim">In code: the last right singular vector of $A$,<br><code>np.linalg.svd(A)[2][-1]</code></p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>From $P$ to $K$, $R$, $t$</h2>
+  <div class="cols">
+    <div>
+      <p>$$P = K\,[R\,|\,t] = [\,KR \;|\; Kt\,]$$</p>
+      <ul>
+        <li>left $3\times3$ block: $M = KR$ — upper triangular × orthogonal</li>
+        <li>this split is the <b>RQ decomposition</b> (QR "from the other side"), unique with a positive diagonal of $K$</li>
+        <li>then $t = K^{-1}\,p_4$ ($p_4$: last column)</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Details</h3>
+      <ul style="font-size:0.8em">
+        <li>$P$ is known only up to scale (and sign): divide by $k_{33}$; if $\det M < 0$, flip the sign of $P$ first, so that $\det R = +1$</li>
+        <li><code>scipy.linalg.rq</code>, <code>cv2.decomposeProjectionMatrix</code></li>
+        <li>camera centre directly: $C = -M^{-1} p_4$</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Calibration to play with</h2>
+  <div style="font-size:1.25em"><div data-widget="calib" data-config='{"width":580,"noise":0.5}'></div></div>
+</section>
+
+<section>
+  <h2>Calibration in practice</h2>
+  <div class="cols">
+    <div>
+      <h3>Zhang's method (what OpenCV does)</h3>
+      <ul style="font-size:0.85em">
+        <li>a <b>flat</b> checkerboard, easy to print — but one plane is degenerate for DLT</li>
+        <li>take 10–20 photos in different orientations; each view gives a <b>homography</b> (plane → image, lecture 3)</li>
+        <li>constraints from all views give $K$ in closed form</li>
+        <li><b>non-linear refinement</b>: minimise the reprojection error over $K$, distortion and all board poses (Levenberg–Marquardt)</li>
+      </ul>
+      <p style="font-size:0.8em"><code>cv2.findChessboardCorners</code> → <code>cv2.cornerSubPix</code> → <code>cv2.calibrateCamera</code>; ChArUco boards also work when partly occluded.</p>
+    </div>
+    <div>
+      <div class="box key">
+        <h3>Algebraic vs geometric error</h3>
+        <p style="font-size:0.8em">DLT minimises $\|Ap\|$, which has no physical meaning. What we care about is the distance in pixels between detected and reprojected points. Linear methods give the starting point; non-linear least squares finishes the job. Normalise the coordinates before DLT (Hartley): it is much more stable.</p>
+      </div>
+      <h3 style="margin-top:0.5em">Good practice</h3>
+      <ul style="font-size:0.8em">
+        <li>tilt the board; cover the whole image, especially the corners (distortion)</li>
+        <li>fixed focus and zoom: refocusing changes $K$</li>
+        <li>check the RMS reprojection error (well below 1 px)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 3</div>
+  <h1>Perspective-n-Point (PnP)</h1>
+</section>
+
+<section>
+  <h2>Where is the object?</h2>
+  <div class="cols">
+    <div>
+      <p><b>Given</b>: a calibrated camera ($K$ known), an object of known geometry (points $X_i$ in the object frame), their pixels $(u_i, v_i)$.</p>
+      <p><b>Find</b>: the object pose $R, t$ in the camera frame — 6 DoF.</p>
+      <div class="question">How many points do we need?</div>
+      <ul class="fragment">
+        <li>each point: 2 equations → <b>3 points</b> (P3P)</li>
+        <li>3 points: up to <b>4 solutions</b></li>
+        <li>a 4th point usually picks the right one</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Where it is used</h3>
+      <ul style="font-size:0.85em">
+        <li>fiducial markers (ArUco, AprilTag): 4 corners → pose of the marker</li>
+        <li>object pose from a CAD model and detected keypoints</li>
+        <li>localisation in a known map; augmented reality</li>
+        <li>calibration: pose of the board in each view</li>
+      </ul>
+      <p style="font-size:0.85em">Calibration: unknown $K$, 11 DoF, $\ge 6$ points. PnP: known $K$, 6 DoF, $\ge 3$ points.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Why up to four solutions?</h2>
+  <div class="cols" style="grid-template-columns: 1fr 1.1fr">
+    <div><svg viewBox="0 0 420 340" width="520" height="421">
+      <polygon points="70,300 330,320 250,215" fill="rgba(242,177,52,0.12)" stroke="#f2b134" stroke-width="2.5"/>
+      <line x1="200" y1="30" x2="70" y2="300" stroke="#5ab0ff" stroke-width="2"/>
+      <line x1="200" y1="30" x2="330" y2="320" stroke="#5ab0ff" stroke-width="2"/>
+      <line x1="200" y1="30" x2="250" y2="215" stroke="#5ab0ff" stroke-width="2"/>
+      <circle cx="200" cy="30" r="7" fill="#e7e9ee"/>
+      <text x="216" y="24" fill="#e7e9ee" font-size="18">camera centre</text>
+      <circle cx="70" cy="300" r="6" fill="#f2b134"/><text x="40" y="326" fill="#f2b134" font-size="20" font-style="italic">X₁</text>
+      <circle cx="330" cy="320" r="6" fill="#f2b134"/><text x="342" y="330" fill="#f2b134" font-size="20" font-style="italic">X₂</text>
+      <circle cx="250" cy="215" r="6" fill="#f2b134"/><text x="222" y="246" fill="#f2b134" font-size="20" font-style="italic">X₃</text>
+      <text x="104" y="160" fill="#5ab0ff" font-size="20" font-style="italic">d₁</text>
+      <text x="278" y="170" fill="#5ab0ff" font-size="20" font-style="italic">d₂</text>
+      <text x="200" y="160" fill="#5ab0ff" font-size="20" font-style="italic">d₃</text>
+      <path d="M 186 62 Q 200 70 214 64" fill="none" stroke="#b28dff" stroke-width="2"/>
+      <text x="238" y="80" fill="#b28dff" font-size="18" font-style="italic">θ₁₂</text>
+      <text x="190" y="334" fill="#f2b134" font-size="18" font-style="italic">a₁₂</text>
+    </svg></div>
+    <div style="font-size:0.85em">
+      <ul>
+        <li>known: the angles $\theta_{ij}$ between the rays (from the pixels and $K$) and the distances $a_{ij}$ between the points (from the model)</li>
+        <li>unknown: the distances $d_1, d_2, d_3$ along the rays</li>
+        <li>law of cosines for each pair:
+          $$a_{ij}^2 = d_i^2 + d_j^2 - 2 d_i d_j \cos\theta_{ij}$$</li>
+        <li>3 quadratic equations in 3 unknowns → one polynomial of degree 4 → up to <b>4</b> real solutions</li>
+        <li>given $d_i$, the 3D points in the camera frame are known; $R, t$ follow by aligning two point sets</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>PnP as least squares</h2>
+  <div class="cols">
+    <div>
+      <p>With many points and noise, minimise the <b>reprojection error</b>:</p>
+      <p>$$\min_{R,\,t} \sum_i \big\|\, \pi\big(K(R X_i + t)\big) - (u_i, v_i) \,\big\|^2$$</p>
+      <p style="font-size:0.85em">$\pi(a, b, c) = (a/c,\ b/c)$. Non-linear: start from a P3P / EPnP solution and refine (Gauss–Newton / Levenberg–Marquardt), with $R$ parametrised by a rotation vector (lecture 1).</p>
+    </div>
+    <div class="box">
+      <h3>OpenCV</h3>
+      <ul style="font-size:0.8em">
+        <li><code>cv2.solvePnP(X, uv, K, dist, flags=…)</code> → <code>rvec, tvec</code></li>
+        <li><code>SOLVEPNP_ITERATIVE</code>, <code>SOLVEPNP_EPNP</code>, <code>SOLVEPNP_SQPNP</code></li>
+        <li><code>SOLVEPNP_IPPE_SQUARE</code>: 4 corners of a square marker</li>
+        <li><code>cv2.solvePnPRansac</code>: when some matches are wrong (next part)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>PnP to play with: a square marker</h2>
+  <div style="font-size:1.25em"><div data-widget="pnp" data-config='{"width":560,"dist":0.5}'></div></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 4</div>
+  <h1>RANSAC</h1>
+</section>
+
+<section>
+  <h2>Wrong measurements</h2>
+  <div class="cols">
+    <div>
+      <ul>
+        <li>correspondences come from detectors and matchers; some are simply <b>wrong</b> (outliers): repeated texture, reflections, occlusions</li>
+        <li>10–50% outliers is common for feature matches (lecture 3)</li>
+        <li>least squares weights every point: one far outlier can move the solution arbitrarily far</li>
+      </ul>
+    </div>
+    <div class="box key">
+      <h3>RANdom SAmple Consensus</h3>
+      <p style="font-size:0.85em">Fischler &amp; Bolles, 1981.</p>
+      <ol style="font-size:0.85em">
+        <li>pick a random <b>minimal sample</b> of $s$ points (line: 2, P3P: 3, DLT: 6)</li>
+        <li>fit the model to the sample</li>
+        <li>count the <b>inliers</b>: points with error below a threshold $\varepsilon$</li>
+        <li>repeat $N$ times, keep the model with the most inliers</li>
+        <li>refit on all its inliers (least squares)</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>RANSAC to play with: line fitting</h2>
+  <div style="font-size:1.25em"><div data-widget="ransac" data-config='{"width":580,"height":400}'></div></div>
+</section>
+
+<section>
+  <h2>How many iterations?</h2>
+  <div class="cols">
+    <div>
+      <p>$w$: fraction of inliers, $s$: sample size, $p$: desired success probability (e.g. 0.99).</p>
+      <ul>
+        <li>a sample is all inliers with probability $w^s$</li>
+        <li>all $N$ samples are contaminated: $(1 - w^s)^N$</li>
+        <li>we want $(1 - w^s)^N \le 1 - p$:</li>
+      </ul>
+      <div class="box key">$$N \ge \frac{\log(1 - p)}{\log(1 - w^s)}$$</div>
+    </div>
+    <div>
+      <table style="font-size:0.9em">
+        <tr><th>$p = 0.99$</th><th>$s = 2$</th><th>$s = 3$</th><th>$s = 4$</th><th>$s = 6$</th></tr>
+        <tr><td>$w = 0.9$</td><td>3</td><td>4</td><td>5</td><td>7</td></tr>
+        <tr><td>$w = 0.7$</td><td>7</td><td>11</td><td>17</td><td>37</td></tr>
+        <tr><td>$w = 0.5$</td><td>17</td><td>35</td><td>72</td><td>293</td></tr>
+        <tr><td>$w = 0.3$</td><td>49</td><td>169</td><td>567</td><td>6315</td></tr>
+      </table>
+      <ul style="font-size:0.8em">
+        <li>does not depend on the number of points</li>
+        <li>grows fast with $s$: use <b>minimal</b> solvers</li>
+        <li>$w$ unknown: update $N$ from the best inlier ratio found so far (adaptive)</li>
+        <li>threshold $\varepsilon \approx 2$–$3\sigma$ of the measurement noise</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="section-slide">
+  <div class="num">Part 5</div>
+  <h1>Simple stereo</h1>
+</section>
+
+<section>
+  <h2>Two cameras, two views</h2>
+  <div class="cols" style="grid-template-columns: auto 1fr">
+    <div style="font-size:1.1em"><div data-widget="stereomatch" data-config='{"mode":"flip","width":600}'></div></div>
+    <div>
+      <p>The same scene from two cameras side by side (the right one is 20&nbsp;cm to the right).</p>
+      <p>Switch between the views:</p>
+      <ul>
+        <li><b>close</b> objects (the sphere, the box) jump a lot</li>
+        <li><b>far</b> objects (the back wall) barely move</li>
+      </ul>
+      <p class="fragment">The shift (<b>disparity</b>) tells us the depth: the closer the object, the larger the shift.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Rectified stereo: the same row in both images</h2>
+  <div class="cols" style="grid-template-columns: auto 1fr; gap:1em">
+    <div style="font-size:0.95em"><div data-widget="stereo3d" data-config='{"width":600,"height":320}'></div></div>
+    <div style="font-size:0.8em">
+      <div class="box key" style="margin-bottom:0.5em">
+        <h3>Definition</h3>
+        <p style="margin:0">A stereo pair is <b>rectified</b> if its images look as if taken by two <b>identical</b> cameras (same $K$) with the <b>same orientation</b>, the right one shifted only along the $x$ axis of the left one, by the <b>baseline</b> $b$.</p>
+      </div>
+      <ul>
+        <li>the plane through $P$ and both centres contains the baseline, so it cuts both image planes along the <b>same row</b>: $v_l = v_r$</li>
+        <li>the match of a pixel is searched along <b>one row</b> only</li>
+        <li>the two rays meet at $P$: <b>triangulation</b></li>
+      </ul>
+      <p class="small"><b>Rectification</b>: warping the two images of a general camera pair (one homography each) into this form, <code>cv2.stereoRectify</code>. The general case (epipolar geometry): lecture 3.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Disparity and depth</h2>
+  <div class="cols">
+    <div>
+      <p>Point $(x, y, z)$ in the left camera frame; the right camera sits at $(b, 0, 0)$:</p>
+      <p>$$u_l = f\frac{x}{z} + o_x, \qquad u_r = f\frac{x - b}{z} + o_x$$</p>
+      <p>Same row in both images: $v_l = v_r = v$.</p>
+      <p>The <b>disparity</b>:</p>
+      <p>$$d = u_l - u_r = \frac{f\,b}{z} \quad\Longrightarrow\quad z = \frac{f\,b}{d}$$</p>
+      <p>$$x = \frac{b\,(u_l - o_x)}{d}, \qquad y = \frac{b\,(v - o_y)}{d}$$</p>
+    </div>
+    <div class="box key">
+      <ul>
+        <li>depth is <b>inversely</b> proportional to disparity</li>
+        <li>disparity is proportional to the baseline $b$</li>
+        <li>far away: $d \to 0$; at infinity $d = 0$ (the same pixel in both images)</li>
+        <li>near: large $d$ — very close points may be visible in one camera only</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Depth precision degrades with $z^2$</h2>
+  <div class="cols">
+    <div>
+      <p>Disparity is measured to a fraction of a pixel. How does an error $\Delta d$ affect depth?</p>
+      <p>$$\Big|\frac{\partial z}{\partial d}\Big| = \frac{f b}{d^2} = \frac{z^2}{f b} \quad\Longrightarrow\quad \Delta z \approx \frac{z^2}{f\,b}\,\Delta d$$</p>
+      <p>Example: $f = 600$ px, $b = 10$ cm, $\Delta d = 0.25$ px:</p>
+      <table style="font-size:0.95em">
+        <tr><th>$z$</th><td>1 m</td><td>5 m</td><td>10 m</td></tr>
+        <tr><th>$\Delta z$</th><td>4 mm</td><td>10 cm</td><td>42 cm</td></tr>
+      </table>
+    </div>
+    <div class="box key">
+      <h3>For a robot</h3>
+      <ul style="font-size:0.85em">
+        <li>stereo is precise for grasping at arm's length, coarse for distant obstacles</li>
+        <li>more precision at range: larger baseline or focal length (narrower field of view)</li>
+        <li>the region of 3D positions consistent with both pixels (± the matching error) stretches along the ray with depth</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Finding correspondences: block matching</h2>
+  <div class="cols">
+    <div>
+      <ul>
+        <li>rectified: the match of pixel $(u, v)$ lies on the <b>same row</b> $v$, at $u - d$ with $0 \le d \le d_{\max}$</li>
+        <li>compare a small window around $(u, v)$ in the left image with windows along the row in the right image</li>
+        <li>take the $d$ with the lowest cost ("winner takes all")</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Window costs</h3>
+      <p style="font-size:0.85em">SAD: $\sum |L - R|$ &nbsp;·&nbsp; SSD: $\sum (L - R)^2$</p>
+      <p style="font-size:0.85em">NCC (normalised cross-correlation): robust to brightness differences between the cameras.</p>
+    </div>
+  </div>
+  <div class="takeaway">A 2D search becomes a 1D search: this is why we rectify.</div>
+</section>
+
+<section>
+  <h2>Block matching to play with</h2>
+  <div style="font-size:1.2em"><div data-widget="stereomatch" data-config='{}'></div></div>
+</section>
+
+<section>
+  <h2>When matching fails</h2>
+  <div class="cols">
+    <ul>
+      <li><b>no texture</b> (white wall): every window looks the same</li>
+      <li><b>repetitive texture</b> (stripes, tiles): several equally good matches</li>
+      <li><b>occlusions</b>: points seen by only one camera have no match</li>
+      <li><b>specular / transparent</b> surfaces: appearance differs between the views</li>
+      <li><b>window size</b>: small → noisy; large → blurred depth edges, and the window assumes a fronto-parallel surface (foreshortening)</li>
+    </ul>
+    <div class="box">
+      <h3>Beyond block matching</h3>
+      <ul style="font-size:0.82em">
+        <li><b>semi-global matching</b> (SGM): adds smoothness along several directions — <code>cv2.StereoSGBM</code></li>
+        <li><b>active stereo</b>: an infrared projector paints a random dot pattern, giving texture to white walls (e.g. Intel RealSense D400)</li>
+        <li><b>learned stereo</b>: neural networks trained on large (often synthetic) datasets, e.g. RAFT-Stereo</li>
+        <li>other depth sensors: structured light, time-of-flight, lidar</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <h2>Summary</h2>
+  <div class="cols">
+    <div>
+      <ul style="font-size:0.9em">
+        <li>$P = K[R\,|\,t]$, $3\times4$, 11 DoF; $t = -RC$</li>
+        <li>calibration (DLT): 2 linear equations per point, $\min\|Ap\|$ s.t. $\|p\| = 1$ → eigenvector of the <b>smallest</b> eigenvalue of $A^\top A$; RQ → $K, R$</li>
+        <li>in practice: planar board, Zhang's method, refine the reprojection error</li>
+        <li>PnP: known $K$, 6 DoF, P3P gives ≤ 4 solutions; refine by least squares</li>
+      </ul>
+    </div>
+    <div>
+      <ul style="font-size:0.9em">
+        <li>RANSAC: minimal samples + consensus; $N = \log(1-p)/\log(1-w^s)$</li>
+        <li>rectified stereo: $z = fb/d$, $\Delta z \approx z^2\Delta d/(fb)$</li>
+        <li>correspondence along the row: block matching; fails without texture, with repetitions and occlusions</li>
+      </ul>
+    </div>
+  </div>
+  <div class="takeaway">Next lecture: homographies and image stitching, features, two-view geometry for general camera pairs.</div>
+</section>
+
+<section>
+  <h2>Exercises</h2>
+  <ol style="font-size:0.85em">
+    <li>$K$: $f_x = f_y = 500$, $(o_x, o_y) = (320, 240)$; $R = I$, $t = (0, 0, 2)$. Project $X_w = (1, 0.5, 3)$. Where is the camera centre?</li>
+    <li>Show that the camera centre $C$ satisfies $P\,(C, 1)^\top = 0$.</li>
+    <li>Why does DLT need at least 6 points? Show that points on one plane $z_w = 0$ leave the third column of $P$ undetermined.</li>
+    <li>Show that $\nabla_p\,(p^\top M p) = (M + M^\top)\,p$.</li>
+    <li>RANSAC for a homography ($s = 4$) with 30% outliers: how many iterations for $p = 0.99$?</li>
+    <li>Stereo with $b = 12$ cm, $f = 700$ px: a point has disparity 21 px. Its depth? The depth error for $\Delta d = 0.5$ px?</li>
+  </ol>
+</section>
+
+<section class="optional">
+  <h2>Self-study: taking good pictures <span class="optional-badge">optional</span></h2>
+  <div class="cols">
+    <div>
+      <p>Practical aspects that matter for robot cameras:</p>
+      <ul>
+        <li>lens vs pinhole, depth of field (lecture 1)</li>
+        <li>aperture, gain (ISO), exposure time — the exposure triangle</li>
+        <li>motion blur; <b>rolling</b> vs <b>global</b> shutter (fast motion!)</li>
+        <li>lens distortion (lecture 1, part 6)</li>
+      </ul>
+    </div>
+    <div>
+      <p>Materials:</p>
+      <ul style="font-size:0.85em">
+        <li><a href="https://fpcv.cs.columbia.edu/">First Principles of Computer Vision</a>: Lenses; Depth of field; Lens related issues</li>
+        <li><a href="https://ciechanow.ski/cameras-and-lenses/">B. Ciechanowski, Cameras and Lenses</a> (interactive; skip "Waves", continue at "Manipulating rays")</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="feedback" class="title-slide">
+  <h1>Feedback</h1>
+  <div style="display:flex; align-items:center; gap:1.5em; margin-top:0.5em">
+    <img src="../../assets/feedback-qr.svg" alt="QR code linking to tinyurl.com/mimuw-rc-feedback" style="width:340px; height:340px; box-sizing:content-box; padding:18px; background:#fff; border-radius:8px; margin:0">
+    <div>
+      <p>Please spend a minute: your feedback helps me improve the next lecture.</p>
+      <p style="font-family:var(--mono); font-size:1.1em"><a href="https://tinyurl.com/mimuw-rc-feedback">tinyurl.com/mimuw-rc-feedback</a></p>
+      <p class="small">Anonymous, no login, three questions.</p>
+    </div>
+  </div>
+</section>
+
+</div></div>
+<script type="module" src="../../shared/deck.js"></script>
+</body>
+</html>

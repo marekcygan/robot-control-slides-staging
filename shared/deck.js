@@ -35,6 +35,9 @@ const widgetModules = {
   magekf: () => import('./widgets/magekf.js'),
   magplane: () => import('./widgets/magplane.js'),
   softiron2d: () => import('./widgets/softiron2d.js'),
+  extrinsics3d: () => import('./widgets/extrinsics3d.js'),
+  projsteps: () => import('./widgets/projsteps.js'),
+  stereo3d: () => import('./widgets/stereo3d.js'),
 };
 
 function renderMath(root) {

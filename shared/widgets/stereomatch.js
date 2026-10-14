@@ -16,8 +16,10 @@
 //   win: 9            window size (odd, slider 3 … 31)
 //   click: [186, 168] preset pixel in the left image (null: none)
 //   lrcheck: false    left–right consistency check
+//   lrButton: true    show the button that toggles the left–right check
 //   mode: "flip"      only the two views, switched with buttons or blinking (vertical guide lines show the shift);
 //                     print shows them side by side
+//   blink: false      (flip) start blinking; it only runs while the slide is shown
 // }
 import { C, h, fmt, isPrint } from './util.js';
 import { LIGHT } from '../theme.js';
@@ -331,7 +333,7 @@ export function mount(el, cfg) {
       h('div', {}, cap('true disparity'), cG), h('div', {}, cap('block matching'), cD)),
     h('div', { style: 'display:flex; flex-direction:column; gap:0.45em; width:15em; flex:none' },
       h('div', { style: 'display:flex; align-items:center; gap:0.4em' }, h('label', {}, 'window'), val),
-      h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start; gap:0.3em; margin-top:0' }, s, lrBtn),
+      h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start; gap:0.3em; margin-top:0' }, s, ...(cfg.lrButton === false ? [] : [lrBtn])),
       plot, stats, bar,
       h('div', { class: 'dim interactive-only' }, 'Click the left image.'))));
   compute(); colorbar(); draw();
@@ -378,9 +380,14 @@ function mountFlip(el, cfg) {
   function show(k) { state.view = k; draw(canvas, k); btn.forEach((x, i) => x.classList.toggle('active', i === k)); }
   function startBlink() {
     blinkBtn.classList.add('active');
-    state.blink = setInterval(() => { if (!el.isConnected) return stopBlink(); show(1 - state.view); }, cfg.period ?? 600);
+    state.blink = setInterval(() => {
+      if (!el.isConnected) return stopBlink();
+      if (el.closest('section')?.classList.contains('present') === false) return;   // slide not shown
+      show(1 - state.view);
+    }, cfg.period ?? 600);
   }
   function stopBlink() { clearInterval(state.blink); state.blink = null; blinkBtn.classList.remove('active'); }
   el.append(canvas, h('div', { class: 'wctl interactive-only', style: 'gap:0.3em' }, ...btn, blinkBtn, guideBtn));
   show(0);
+  if (cfg.blink) startBlink();
 }

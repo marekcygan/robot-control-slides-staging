@@ -7,11 +7,13 @@
 //
 // config: {
 //   width: 600, height: 460     canvas size
-//   b: 0.3                      baseline in metres (slider 0.1 … 1)
+//   b: 0.3                      baseline in metres (slider bMin … 1)
+//   bMin: 0.1                   smallest baseline on the slider
+//   stretch: 8                  stretch factor of the x axis
 //   f: 500                      focal length in pixels; images are 640 px wide, o_x = 320
 //   point: [0.8, 7]             P = (x, z) in the left camera frame, metres
 //   uncertainty: true           show the uncertainty region and the inset plot
-//   err: 1                      matching error ±e in pixels (slider 0.5 … 3)
+//   err: 1                      matching error ±e in pixels (slider 0.25 … 3)
 // }
 import { C, h, fmt, arrow } from './util.js';
 
@@ -29,7 +31,7 @@ export function mount(el, cfg) {
 
   // ---- scene ↔ canvas mapping (cameras at the bottom, z up, x stretched) ----
   const Y0 = H - 140, YTOP = 22;
-  const sz = (Y0 - YTOP) / ZMAX, STRETCH = 8, sx = sz * STRETCH;
+  const sz = (Y0 - YTOP) / ZMAX, STRETCH = cfg.stretch ?? 8, sx = sz * STRETCH;
   const cx = () => W / 2 - 40;                              // canvas x of the baseline midpoint
   const X = x => cx() + (x - state.b / 2) * sx;
   const Y = z => Y0 - z * sz;
@@ -110,7 +112,7 @@ export function mount(el, cfg) {
 
     const ul = proj(P[0], P[1], 0), ur = proj(P[0], P[1], b);
     // rays from the cameras to P
-    g.lineWidth = 2;
+    g.lineWidth = state.unc ? 1.2 : 2;
     g.strokeStyle = C.blue; g.beginPath(); g.moveTo(X(0), Y0); g.lineTo(X(P[0]), Y(P[1])); g.stroke();
     g.strokeStyle = C.green; g.beginPath(); g.moveTo(X(b), Y0); g.lineTo(X(P[0]), Y(P[1])); g.stroke();
     // uncertainty region
@@ -120,8 +122,12 @@ export function mount(el, cfg) {
       const zCap = ZMAX * 1.6;
       const farPt = far && far[1] < zCap ? far : (() => { const z = zCap; return [z * (ul - e - OX) / state.f, z]; })();
       if (near && s1 && s2) {
-        g.fillStyle = 'rgba(242,177,52,0.55)'; g.strokeStyle = C.accent; g.lineWidth = 2;
+        // the region is often only a few pixels wide: thick outline, and bars at its near and far ends
+        g.fillStyle = 'rgba(242,177,52,0.55)'; g.strokeStyle = C.accent; g.lineWidth = 5; g.lineJoin = 'round';
         g.beginPath(); [near, s1, farPt, s2].forEach(([x, z], i) => (i ? g.lineTo(X(x), Y(z)) : g.moveTo(X(x), Y(z)))); g.closePath(); g.fill(); g.stroke();
+        const dir = [X(farPt[0]) - X(near[0]), Y(farPt[1]) - Y(near[1])], dl = Math.hypot(...dir) || 1, nx = -dir[1] / dl * 11, ny = dir[0] / dl * 11;
+        g.lineWidth = 3;
+        for (const [x, z] of [near, farPt]) { g.beginPath(); g.moveTo(X(x) - nx, Y(z) - ny); g.lineTo(X(x) + nx, Y(z) + ny); g.stroke(); }
         g.fillStyle = C.accent; g.font = '19px Inter, Arial';
         const zf = far && far[1] < zCap ? fmt(far[1], 1) : '∞';
         g.fillText(`z ∈ [${fmt(near[1], 1)}, ${zf}] m`, Math.max(X(s1[0]), X(s2[0])) + 14, Y(P[1]) + 22);
@@ -133,9 +139,14 @@ export function mount(el, cfg) {
       }
     }
     // cameras: small glyphs (not to scale) with the image line on top
-    for (const [cam, col, name] of [[0, C.blue, 'left'], [b, C.green, 'right']]) {
-      g.fillStyle = col; g.beginPath(); g.moveTo(X(cam), Y0); g.lineTo(X(cam) - 13, Y0 + 20); g.lineTo(X(cam) + 13, Y0 + 20); g.closePath(); g.fill();
-      g.fillStyle = C.fg; g.font = '18px Inter, Arial'; g.textAlign = 'center'; g.fillText(name, X(cam), Y0 + 32); g.textAlign = 'left';
+    // (close cameras: narrower glyphs, labels pushed outwards so they do not overlap)
+    const sep = X(b) - X(0), gw = Math.max(5, Math.min(13, sep / 2 - 1)), close = sep < 56;
+    for (const [cam, col, name, side] of [[0, C.blue, 'left', -1], [b, C.green, 'right', 1]]) {
+      g.fillStyle = col; g.beginPath(); g.moveTo(X(cam), Y0); g.lineTo(X(cam) - gw, Y0 + 20); g.lineTo(X(cam) + gw, Y0 + 20); g.closePath(); g.fill();
+      g.fillStyle = C.fg; g.font = '18px Inter, Arial';
+      if (close) { g.textAlign = side < 0 ? 'right' : 'left'; g.fillText(name, X(cam) + side * (gw + 4), Y0 + 32); }
+      else { g.textAlign = 'center'; g.fillText(name, X(cam), Y0 + 32); }
+      g.textAlign = 'left';
     }
     // baseline
     g.strokeStyle = C.fg; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(0), Y0 + 3); g.lineTo(X(b), Y0 + 3); g.stroke();
@@ -197,8 +208,8 @@ export function mount(el, cfg) {
       readout, plot,
       h('div', { class: 'dim' }, 'Drag P.'),
       h('div', { class: 'wctl interactive-only', style: 'flex-direction:column; align-items:flex-start; gap:0.3em' },
-        slider('b', 0.1, 1, 0.01, 'baseline', ' m'),
+        slider('b', cfg.bMin ?? 0.1, 1, 0.01, 'baseline', ' m'),
         h('div', { style: 'display:flex; gap:0.3em' }, uncBtn),
-        slider('err', 0.5, 3, 0.25, 'error ±', ' px')))));
+        slider('err', 0.25, 3, 0.25, 'error ±', ' px')))));
   draw();
 }
